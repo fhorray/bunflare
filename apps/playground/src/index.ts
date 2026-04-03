@@ -1,5 +1,6 @@
 import { serve } from "bun";
 import { Database } from "bun:sqlite";
+import { getBunCloudflareContext } from "bun-cloudflare/runtime";
 import index from "./index.html";
 
 // Database instance - automatically transformed to Cloudflare D1 on build
@@ -52,9 +53,90 @@ const server = serve({
       },
     },
 
-    // ─── Routes: R2 (Bun.file / Bun.write → Cloudflare R2) ─────────────
-    // Bun.file() and Bun.write() are automatically transformed to R2 on build.
-    // The filename acts as the R2 object key within the bound bucket.
+    // ─── Routes: R2 Asset Manager ──────────────────────────────────────
+    "/api/storage/list": async (req) => {
+      try {
+        const url = new URL(req.url);
+        const prefix = url.searchParams.get("prefix") || "";
+        const delimiter = url.searchParams.get("delimiter") || "/";
+
+        // Using the newly overhauled Bun.s3.list API
+        const list = await Bun.s3.list({ prefix, delimiter });
+        
+        return Response.json({ 
+          objects: (list.contents || []).map((o: any) => ({
+            key: o.key,
+            size: o.size,
+            uploaded: o.lastModified,
+            etag: o.etag,
+            contentType: "application/octet-stream" // Will be refined in frontend or via /stat
+          })),
+          prefixes: list.commonPrefixes || []
+        });
+      } catch (e: any) {
+        return Response.json({ error: e.message }, { status: 500 });
+      }
+    },
+
+    "/api/storage/stat": async (req) => {
+        const url = new URL(req.url);
+        const key = url.searchParams.get("key");
+        if (!key) return Response.json({ error: "Missing key" }, { status: 400 });
+        
+        try {
+            // Using the new Bun.s3.stat API
+            const stat = await Bun.s3.stat(key);
+            return Response.json(stat);
+        } catch (e: any) {
+            return Response.json({ error: e.message }, { status: 404 });
+        }
+    },
+
+    "/api/storage/file/*": async (req) => {
+      const url = new URL(req.url);
+      const key = url.pathname.replace("/api/storage/file/", "");
+      if (!key) return new Response("Not Found", { status: 404 });
+
+      // Using Bun.file with s3:// protocol!
+      const file = Bun.file(`s3://BUCKET/${key}`);
+      const exists = await file.exists();
+      if (!exists) return new Response("File not found", { status: 404 });
+
+      return new Response(await file.arrayBuffer(), {
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "Content-Disposition": `inline; filename="${key}"`
+        }
+      });
+    },
+
+    "/api/storage/upload": async (req) => {
+      try {
+        const formData = await req.formData();
+        const file = formData.get("file") as File;
+        if (!file) return Response.json({ error: "No file uploaded" }, { status: 400 });
+
+        // Using S3Client.write static method
+        await Bun.s3.write(file.name, await file.arrayBuffer(), {
+            type: file.type
+        });
+        
+        return Response.json({ message: "Upload successful", key: file.name });
+      } catch (e: any) {
+        return Response.json({ error: e.message }, { status: 500 });
+      }
+    },
+
+    "/api/storage/delete": async (req) => {
+      const { key } = await req.json();
+      if (!key) return Response.json({ error: "Missing key" }, { status: 400 });
+      
+      // Using Bun.s3.delete
+      await Bun.s3.delete(key);
+      return Response.json({ message: "Deleted successfully" });
+    },
+
+    // Legacy single-file routes (kept for backward compat or simple tests)
     "/api/file": {
       async GET(req) {
         const file = Bun.file("playground-data.txt");

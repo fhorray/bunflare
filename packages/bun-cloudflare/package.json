@@ -43,6 +43,9 @@
     },
     "./shims/s3": {
       "import": "./src/shims/s3.ts"
+    },
+    "./runtime": {
+      "import": "./src/runtime/context.ts"
     }
   },
   "peerDependencies": {

@@ -39,7 +39,6 @@ Bun.serve({
     expect(transformed).toContain('export default {');
     expect(transformed).toContain('async fetch(request, env, ctx)');
     expect(transformed).toContain('setBunCloudflareContext({');
-    expect(transformed).toContain('mergedEnv');
     expect(transformed).toContain('await db.query("SELECT * FROM users").all()');
     expect(transformed).toContain('await db.query("INSERT INTO users (name) VALUES (?)").run(data.name)');
     expect(transformed).toContain('getBunCloudflareContext().env.APP_NAME');
@@ -83,10 +82,10 @@ await Bun.redis.set("key", "val");
     transformed = transformFileIO(transformed);
     transformed = transformSecondary(transformed);
     
-    expect(transformed).toContain('import { file, write } from "bun-cloudflare/shims/file-io"');
+    expect(transformed).toContain('import { file as __bunFile, write as __bunWrite } from "bun-cloudflare/shims/file-io"');
     expect(transformed).toContain('import { redis } from "bun-cloudflare/shims/redis"');
-    expect(transformed).toContain('await write("test.txt", "data")');
-    expect(transformed).toContain('const f = file("test.txt")');
+    expect(transformed).toContain('await __bunWrite("test.txt", "data")');
+    expect(transformed).toContain('const f = __bunFile("test.txt")');
     expect(transformed).toContain('await redis.set("key", "val")');
   });
 

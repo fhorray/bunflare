@@ -1,4 +1,5 @@
 import { getBunCloudflareContext } from "../runtime/context";
+import { s3, S3Client } from "./s3";
 
 /**
  * Shim for Bun.file() → Cloudflare R2
@@ -30,6 +31,17 @@ function findR2Bucket(env: Record<string, any>) {
  * Shim for Bun.file(path) → R2 object with BunFile-compatible API
  */
 export function file(path: string) {
+  if (path.startsWith("s3://")) {
+    try {
+      const url = new URL(path);
+      const bucketName = url.host;
+      const key = url.pathname.slice(1); // Remove leading /
+      return new S3Client({ bucket: bucketName }).file(key);
+    } catch (e) {
+      // Fallback or error
+    }
+  }
+
   return {
     async text(): Promise<string> {
       const { env } = getBunCloudflareContext<any>();
@@ -79,8 +91,20 @@ export function file(path: string) {
 export async function write(
   path: string,
   data: string | ArrayBuffer | Blob
-): Promise<void> {
+): Promise<void | number> {
+  if (path.startsWith("s3://")) {
+    try {
+      const url = new URL(path);
+      const bucketName = url.host;
+      const key = url.pathname.slice(1);
+      return await new S3Client({ bucket: bucketName }).write(key, data);
+    } catch (e) {
+      // Fallback
+    }
+  }
+
   const { env } = getBunCloudflareContext<any>();
   const bucket = findR2Bucket(env);
-  await bucket.put(path, data);
+  const result = await bucket.put(path, data);
+  return result ? result.size : 0;
 }

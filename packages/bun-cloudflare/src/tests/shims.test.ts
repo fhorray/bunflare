@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from "bun:test";
 import { Database } from "../shims/sqlite";
 import { file, write } from "../shims/file-io";
-import { s3 } from "../shims/s3";
+import { s3, S3Client } from "../shims/s3";
 import { password, hash } from "../shims/crypto";
 import { gzipSync, gunzipSync } from "../shims/compression";
 import { redis } from "../shims/redis";
@@ -12,8 +12,8 @@ import type { KVNamespace, R2Bucket, D1Database, IncomingRequestCfProperties, Ex
 describe("Shims Exhaustive Tests", () => {
     const mockCf = {} as IncomingRequestCfProperties;
     const mockCtx = {
-        waitUntil: (promise: Promise<any>) => {},
-        passThroughOnException: () => {}
+        waitUntil: (promise: Promise<any>) => { },
+        passThroughOnException: () => { }
     } as ExecutionContext;
 
     describe("SQLite (D1) Shim", () => {
@@ -51,33 +51,70 @@ describe("Shims Exhaustive Tests", () => {
         });
 
         it("should execute exec() correctly", async () => {
-           const db = new Database("DB");
-           await db.exec("CREATE TABLE foo (id INT)");
+            const db = new Database("DB");
+            await db.exec("CREATE TABLE foo (id INT)");
         });
     });
 
-    describe("File-IO (Legacy/Unsupported) Shim", () => {
-        it("should throw informative error on file() call", () => {
-            expect(() => file("test.txt")).toThrow(/not supported/);
+    describe("File-IO (R2) Shim", () => {
+        const mockR2 = {
+            get: async (_path: string) => ({
+                text: async () => "file content",
+            }),
+            put: async (_path: string, _data: any) => ({}),
+            head: async (_path: string) => ({ size: 12 })
+        } as unknown as R2Bucket;
+
+        beforeEach(() => {
+            setBunCloudflareContext({
+                env: { BUCKET: mockR2 },
+                cf: mockCf,
+                ctx: mockCtx
+            });
         });
 
-        it("should throw informative error on write() call", async () => {
-            await expect(write("test.txt", "content")).rejects.toThrow(/not supported/);
+        it("should read file().text() correctly via R2", async () => {
+            const f = file("test.txt");
+            const text = await f.text();
+            expect(text).toBe("file content");
+        });
+
+        it("should write via write() correctly to R2", async () => {
+            await write("test.txt", "new content");
+        });
+
+        it("should support s3:// protocol via file()", async () => {
+            const f = file("s3://MY_BUCKET/test.txt");
+            const text = await f.text();
+            expect(text).toBe("file content");
         });
     });
 
     describe("S3 (R2) Shim", () => {
         const mockR2 = {
-            get: async (_path: string) => ({
-                text: async () => '{"key": "value"}',
+            get: async (path: string) => ({
+                text: async () => path === "test.json" ? '{"key": "value"}' : 'file content',
                 json: async () => ({ key: "value" }),
                 arrayBuffer: async () => new ArrayBuffer(8),
-                blob: async () => new Blob(['{"key": "value"}']),
-                head: async () => ({ size: 12 })
+                blob: async () => new Blob(['content']),
+                httpMetadata: { contentType: "application/json" },
+                size: 12,
+                uploaded: new Date("2025-01-07T00:00:00Z"),
+                etag: "etag-123"
             }),
-            put: async (_path: string, _data: any) => ({}),
-            head: async (_path: string) => ({ size: 12 }),
-            delete: async (_path: string) => ({})
+            put: async (path: string, data: any) => ({ size: typeof data === 'string' ? data.length : 0 }),
+            head: async (path: string) => path === "nonexistent.txt" ? null : ({ 
+                size: 12, 
+                etag: "etag-123", 
+                uploaded: new Date("2025-01-07T00:00:00Z"),
+                httpMetadata: { contentType: "text/plain" }
+            }),
+            delete: async (path: string) => ({}),
+            list: async (options: any) => ({
+                truncated: false,
+                objects: [{ key: "test.txt", size: 12, etag: "etag-123", uploaded: new Date() }],
+                cursor: "next-cursor"
+            })
         } as unknown as R2Bucket;
 
         beforeEach(() => {
@@ -91,7 +128,7 @@ describe("Shims Exhaustive Tests", () => {
         it("should read s3.file().text() correctly", async () => {
             const f = s3.file("test.txt");
             const text = await f.text();
-            expect(text).toBe('{"key": "value"}');
+            expect(text).toBe('file content');
         });
 
         it("should read s3.file().json() correctly", async () => {
@@ -100,18 +137,30 @@ describe("Shims Exhaustive Tests", () => {
             expect(json).toEqual({ key: "value" });
         });
 
-        it("should read s3.file().size() correctly", async () => {
+        it("should check existence via s3.file().exists()", async () => {
             const f = s3.file("test.txt");
-            const size = await f.size();
-            expect(size).toBe(12);
+            expect(await f.exists()).toBe(true);
+            const f2 = s3.file("nonexistent.txt");
+            expect(await f2.exists()).toBe(false);
         });
 
-        it("should write via s3.write() correctly", async () => {
-            await s3.write("test.txt", "new content");
+        it("should get stats via s3.file().stat()", async () => {
+            const f = s3.file("test.txt");
+            const stat = await f.stat();
+            expect(stat.size).toBe(12);
+            expect(stat.etag).toBe("etag-123");
+            expect(stat.type).toBe("text/plain");
         });
 
-        it("should write via s3.file().write() correctly", async () => {
-            await s3.file("test.txt").write("new content");
+        it("should list objects via s3.list()", async () => {
+            const result = await s3.list();
+            expect(result.contents.length).toBe(1);
+            expect(result.contents[0].key).toBe("test.txt");
+        });
+
+        it("should write via S3Client.write() static method", async () => {
+            const size = await S3Client.write("test.txt", "content");
+            expect(size).toBe(7);
         });
 
         it("should delete via s3.file().delete() correctly", async () => {
@@ -150,8 +199,8 @@ describe("Shims Exhaustive Tests", () => {
     describe("Redis (KV) Shim", () => {
         const mockKV = {
             get: async (key: string) => "value",
-            put: async (key: string, value: string, options?: any) => {},
-            delete: async (key: string) => {}
+            put: async (key: string, value: string, options?: any) => { },
+            delete: async (key: string) => { }
         } as unknown as KVNamespace;
 
         beforeEach(() => {

@@ -1,31 +1,35 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { APITester } from './APITester';
-import './index.css';
+import { useState } from "react";
+import { Layout } from "./components/Layout";
+import { OverviewView } from "./components/views/OverviewView";
+import { DatabaseView } from "./components/views/DatabaseView";
+import { StorageView } from "./components/views/StorageView";
+import { CacheView } from "./components/views/CacheView";
+import "./index.css";
+
+type Tab = "overview" | "database" | "storage" | "cache";
 
 export function App() {
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return <OverviewView />;
+      case "database":
+        return <DatabaseView />;
+      case "storage":
+        return <StorageView />;
+      case "cache":
+        return <CacheView />;
+      default:
+        return <OverviewView />;
+    }
+  };
+
   return (
-    <div className="container mx-auto p-8 text-center relative z-10 max-w-4xl">
-      <Card>
-        <CardHeader className="gap-4">
-          <CardTitle className="text-3xl font-bold">
-            Bun + Cloudflare Playground
-          </CardTitle>
-          <CardDescription>
-            Test your D1, R2, and KV bindings locally with Bun's file-based
-            emulators.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <APITester />
-        </CardContent>
-      </Card>
-    </div>
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+      {renderContent()}
+    </Layout>
   );
 }
 

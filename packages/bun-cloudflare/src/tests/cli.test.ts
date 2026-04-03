@@ -41,7 +41,7 @@ describe("CLI Integration", () => {
         
         // We check if the build process started. It might fail on external resolution 
         // in temp dirs, but we want to know it didn't crash and tried to build.
-        expect(stdout).toContain("[bun-cloudflare] 📦 Building ./src/index.ts to ./dist");
+        expect(stdout).toContain("[bun-cloudflare] 📦 Building 1 entries to ./dist");
         
         if (result.exitCode === 0) {
             expect(stdout).toContain("[bun-cloudflare] ✨ Build successful!");

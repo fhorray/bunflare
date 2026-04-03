@@ -29,7 +29,7 @@ export function transformServe(source: string): string {
   // 1. Remove "import { ... serve ... } from 'bun'"
   // This is critical when target is "browser" (Cloudflare) because "bun" cannot be imported.
   transformed = transformed.replace(/import\s+\{[^}]*\bserve\b[^}]*\}\s+from\s+['"]bun['"];?/g, "");
-  
+
   if (!transformed.includes('import { setBunCloudflareContext } from "bun-cloudflare"')) {
     transformed = `import { setBunCloudflareContext } from "bun-cloudflare";\n` + transformed;
   }
@@ -50,7 +50,7 @@ export function transformServe(source: string): string {
     // We look backwards from matchIndex for "const/let/var name ="
     const beforeMatch = transformed.slice(0, matchIndex);
     const assignmentMatch = beforeMatch.match(/(?:const|let|var)\s+[a-zA-Z0-9_$]+\s*=\s*$/);
-    
+
     let startIndex = matchIndex;
     if (assignmentMatch) {
       startIndex = matchIndex - assignmentMatch[0].length;
@@ -71,6 +71,14 @@ export function transformServe(source: string): string {
 
     const replacement = `
 const $$options = ${options.trim()};
+const $$sortedRoutes = $$options.routes ? Object.entries($$options.routes).sort(([a], [b]) => {
+  const aIsWild = a.includes("*");
+  const bIsWild = b.includes("*");
+  if (aIsWild && !bIsWild) return 1;
+  if (!aIsWild && bIsWild) return -1;
+  return b.length - a.length;
+}) : [];
+
 const $$worker = {
   async fetch(request, env, ctx) {
     const { setBunCloudflareContext } = await import("bun-cloudflare");
@@ -87,20 +95,12 @@ const $$worker = {
       if (assetResponse.status !== 404) return assetResponse;
     }
 
-    if ($$options.routes) {
+    if ($$sortedRoutes.length > 0) {
       const url = new URL(request.url);
       const pathWithSlash = url.pathname;
       const path = pathWithSlash === "/" ? "/" : (pathWithSlash.endsWith("/") ? pathWithSlash.slice(0, -1) : pathWithSlash);
-      
-      const sortedRoutes = Object.entries($$options.routes).sort(([a], [b]) => {
-        const aIsWild = a.includes("*");
-        const bIsWild = b.includes("*");
-        if (aIsWild && !bIsWild) return 1;
-        if (!aIsWild && bIsWild) return -1;
-        return b.length - a.length;
-      });
 
-      for (const [route, handler] of sortedRoutes) {
+      for (const [route, handler] of $$sortedRoutes) {
         const isMatch = route === path || (route.endsWith("*") && path.startsWith(route.slice(0, -1)));
         
         if (isMatch) {

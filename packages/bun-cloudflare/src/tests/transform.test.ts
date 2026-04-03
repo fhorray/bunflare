@@ -18,7 +18,7 @@ describe("applyTransforms", () => {
       expect(transformed).toContain('const $$options = {');
     });
 
-    it("should NOT transform serve() imported from 'bun' (use Bun.serve instead)", () => {
+    it("should transform serve() imported from 'bun' and remove the import", () => {
       const source = `
         import { serve } from "bun";
         serve({
@@ -28,7 +28,8 @@ describe("applyTransforms", () => {
         });
       `;
       const transformed = applyTransforms(source, "index.ts");
-      expect(transformed).toBe(source);
+      expect(transformed).toContain("export default {");
+      expect(transformed).not.toContain('import { serve } from "bun"');
     });
 
     it("should transform Bun.serve with variable options", () => {
@@ -98,17 +99,17 @@ describe("applyTransforms", () => {
   });
 
   describe("File-IO transformation", () => {
-    it("should transform Bun.file() to file()", () => {
+    it("should transform Bun.file() to __bunFile()", () => {
       const source = 'const f = Bun.file("config.json");';
       const transformed = applyTransforms(source, "index.ts");
-      expect(transformed).toContain('const f = file("config.json")');
-      expect(transformed).toContain('import { file, write } from "bun-cloudflare/shims/file-io"');
+      expect(transformed).toContain('const f = __bunFile("config.json")');
+      expect(transformed).toContain('import { file as __bunFile, write as __bunWrite } from "bun-cloudflare/shims/file-io"');
     });
 
-    it("should transform Bun.write() to await write()", () => {
+    it("should transform Bun.write() to await __bunWrite()", () => {
       const source = 'Bun.write("test.txt", "hello");';
       const transformed = applyTransforms(source, "index.ts");
-      expect(transformed).toContain('await write("test.txt", "hello")');
+      expect(transformed).toContain('await __bunWrite("test.txt", "hello")');
     });
   });
 
