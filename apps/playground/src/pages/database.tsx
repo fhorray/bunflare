@@ -11,7 +11,9 @@ import {
 } from '@/components/ui/card';
 import { Database, UserPlus, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 
-export function DatabaseView() {
+export const meta = () => [{ title: "D1 Database | Buncf Playground" }];
+
+export default function DatabasePage() {
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [isInserting, setIsInserting] = useState(false);
@@ -24,7 +26,7 @@ export function DatabaseView() {
     setLoading(true);
     try {
       const res = await fetch('/api/db');
-      const data = await res.json();
+      const data = (await res.json()) as any;
       if (data.users) setUsers(data.users);
     } finally {
       setLoading(false);

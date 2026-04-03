@@ -15,7 +15,12 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-export function OverviewView() {
+export const meta = () => [
+  { title: "Dashboard | Buncf Playground" },
+  { name: "description", content: "System overview of your Buncf environment" }
+];
+
+export default function OverviewPage() {
   const stats = [
     {
       title: 'D1 Database',

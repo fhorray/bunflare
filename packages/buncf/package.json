@@ -53,6 +53,10 @@
     },
     "./runtime": {
       "import": "./src/runtime/context.ts"
+    },
+    "./router": {
+      "import": "./src/router/index.ts",
+      "types": "./src/router/index.ts"
     }
   },
   "files": [
@@ -61,11 +65,16 @@
     "README.md"
   ],
   "peerDependencies": {
+    "react": "^19.0.0",
     "typescript": "^5",
-    "wrangler": "^3.0.0"
+    "wrangler": "^3.0.0",
+    "zod": "^3.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260403.1",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "zod": "^3.0.0"
   }
 }

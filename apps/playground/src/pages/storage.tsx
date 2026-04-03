@@ -30,6 +30,8 @@ import {
   Hash,
 } from 'lucide-react';
 
+export const meta = () => [{ title: "R2 Storage | Buncf Playground" }];
+
 interface StorageObject {
   key: string;
   size: number;
@@ -38,7 +40,7 @@ interface StorageObject {
   contentType: string;
 }
 
-export function StorageView() {
+export default function StoragePage() {
   const [files, setFiles] = useState<StorageObject[]>([]);
   const [prefixes, setPrefixes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);

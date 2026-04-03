@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 import {
   LayoutDashboard,
   Database,
@@ -7,24 +7,21 @@ import {
   Terminal,
   ExternalLink,
   ChevronRight,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Link, usePathname } from "buncf/router";
 
-type Tab = 'overview' | 'database' | 'storage' | 'cache';
-
-interface LayoutProps {
-  children: ReactNode;
-  activeTab: Tab;
-  setActiveTab: (tab: Tab) => void;
-}
-
-export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
+export default function RootLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  
   const navItems = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'database', label: 'Database (D1)', icon: Database },
-    { id: 'storage', label: 'Storage (R2)', icon: HardDrive },
-    { id: 'cache', label: 'Cache (KV)', icon: Zap },
+    { href: "/", label: "Overview", icon: LayoutDashboard },
+    { href: "/database", label: "Database (D1)", icon: Database },
+    { href: "/storage", label: "Storage (R2)", icon: HardDrive },
+    { href: "/cache", label: "Cache (KV)", icon: Zap },
   ] as const;
+
+  const currentTab = navItems.find(item => item.href === pathname) || navItems[0];
 
   return (
     <div className="flex h-screen w-full bg-background/95 backdrop-blur-sm overflow-hidden border">
@@ -41,27 +38,25 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
 
         <nav className="flex-1 px-3 space-y-1">
           {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
+            <Link
+              key={item.href}
+              href={item.href}
               className={cn(
-                'w-full nav-item group',
-                activeTab === item.id ? 'nav-item-active' : 'nav-item-inactive',
+                "w-full nav-item group flex items-center gap-3 px-4 py-2 rounded-md transition-colors",
+                pathname === item.href ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
               )}
             >
               <item.icon
                 className={cn(
-                  'w-4 h-4 transition-transform group-hover:scale-110',
-                  activeTab === item.id
-                    ? 'text-primary-foreground'
-                    : 'text-muted-foreground',
+                  "w-4 h-4 transition-transform group-hover:scale-110",
+                  pathname === item.href ? "text-primary-foreground" : "text-muted-foreground"
                 )}
               />
               <span className="flex-1 text-left">{item.label}</span>
-              {activeTab === item.id && (
+              {pathname === item.href && (
                 <ChevronRight className="w-3 h-3 text-primary-foreground/50" />
               )}
-            </button>
+            </Link>
           ))}
         </nav>
 
@@ -87,7 +82,7 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
               Service /
             </span>
             <span className="text-sm font-semibold capitalize tracking-tight">
-              {activeTab === 'overview' ? 'System Dashboard' : activeTab}
+              {currentTab ? (currentTab.href === "/" ? "System Dashboard" : currentTab.label) : "Dashboard"}
             </span>
           </div>
           <div className="flex items-center gap-3">

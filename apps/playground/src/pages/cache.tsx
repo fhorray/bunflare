@@ -11,13 +11,14 @@ import {
   Zap,
   RefreshCcw,
   Loader2,
-  MinusCircle,
   PlusCircle,
   Trash2,
   CheckCircle2,
 } from 'lucide-react';
 
-export function CacheView() {
+export const meta = () => [{ title: 'KV Cache | Buncf Playground' }];
+
+export default function CachePage() {
   const [count, setCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [isIncrementing, setIsIncrementing] = useState(false);
@@ -30,7 +31,7 @@ export function CacheView() {
     setLoading(true);
     try {
       const res = await fetch('/api/redis');
-      const data = await res.json();
+      const data = (await res.json()) as any;
       if (data.count !== undefined) setCount(data.count);
     } finally {
       setLoading(false);
@@ -41,7 +42,7 @@ export function CacheView() {
     setIsIncrementing(true);
     try {
       const res = await fetch('/api/redis', { method: 'POST' });
-      const data = await res.json();
+      const data = (await res.json()) as any;
       if (data.count !== undefined) setCount(data.count);
     } finally {
       setIsIncrementing(false);
@@ -187,8 +188,8 @@ export function CacheView() {
                 Architecture Tip
               </p>
               <p className="text-xs text-muted-foreground italic leading-relaxed">
-                "Access your KV bindings directly through the environment context; 
-                Wrangler provides a perfect local simulation."
+                "Access your KV bindings directly through the environment
+                context; Wrangler provides a perfect local simulation."
               </p>
             </div>
           </CardContent>
