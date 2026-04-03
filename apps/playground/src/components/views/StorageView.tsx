@@ -59,7 +59,10 @@ export function StorageView() {
       const url = new URL('/api/storage/list', window.location.origin);
       if (currentPrefix) url.searchParams.set('prefix', currentPrefix);
       const res = await fetch(url);
-      const data = await res.json();
+      const data = (await res.json()) as {
+        objects: StorageObject[];
+        prefixes: string[];
+      };
       if (data.objects) setFiles(data.objects);
       if (data.prefixes) setPrefixes(data.prefixes);
     } catch (e) {
@@ -72,7 +75,7 @@ export function StorageView() {
   const getFullStat = async (file: StorageObject) => {
     try {
       const res = await fetch(`/api/storage/stat?key=${file.key}`);
-      const stat = await res.json();
+      const stat = (await res.json()) as StorageObject;
       setSelectedFile({ ...file, ...stat });
     } catch (e) {
       setSelectedFile(file);
@@ -139,7 +142,9 @@ export function StorageView() {
           <h2 className="text-3xl font-bold tracking-tight">Asset Manager</h2>
           <p className="text-muted-foreground text-sm">
             Cloudflare R2 storage powered by{' '}
-            <span className="text-primary font-semibold">Native R2 Bindings</span>
+            <span className="text-primary font-semibold">
+              Native R2 Bindings
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-3">

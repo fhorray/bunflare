@@ -37,7 +37,7 @@ describe("applyTransforms", () => {
       const source = "const v = Bun.env.API_KEY;";
       const transformed = applyTransforms(source, "index.ts");
       expect(transformed).toContain("getCloudflareContext().env.API_KEY");
-      expect(transformed).toContain('import { getCloudflareContext } from "bun-cloudflare"');
+      expect(transformed).toContain('import { getCloudflareContext } from "buncf"');
     });
 
     it("should NOT transform NODE_ENV", () => {

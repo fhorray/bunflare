@@ -115,27 +115,7 @@ export default defineConfig({
     console.log("  ⚠️ buncf.config.ts already exists, skipping...");
   }
 
-  // 5. Update bunfig.toml
-  const bunfigPath = path.join(rootDir, "bunfig.toml");
-  const preloadStr = "buncf/preload";
-  
-  if (existsSync(bunfigPath)) {
-    let content = readFileSync(bunfigPath, "utf-8");
-    if (!content.includes(preloadStr)) {
-      if (content.includes("preload = [")) {
-        content = content.replace("preload = [", `preload = ["${preloadStr}", `);
-      } else {
-        content += `\npreload = ["${preloadStr}"]\n`;
-      }
-      await Bun.write(bunfigPath, content);
-      console.log("  ✅ Added buncf/preload to bunfig.toml");
-    }
-  } else {
-    await Bun.write(bunfigPath, `preload = ["${preloadStr}"]\n`);
-    console.log("  ✅ Created bunfig.toml with buncf/preload");
-  }
-
   console.log("\n[buncf] ✨ Initialization complete!");
-  console.log("[buncf] 💡 You can now run your project with: bun run " + detectedEntry);
+  console.log("[buncf] 💡 You can now run your project with: wrangler dev");
   console.log("[buncf] 💡 Run 'bun run cf-typegen' to generate binding types.");
 }
