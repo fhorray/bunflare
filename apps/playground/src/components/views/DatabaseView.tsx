@@ -59,12 +59,12 @@ export function DatabaseView() {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h2 className="text-3xl font-bold tracking-tight">D1 Database</h2>
           <p className="text-muted-foreground">
-            Relational data management with SQLite emulation.
+            Relational data management with Native D1 Bindings.
           </p>
         </div>
         <Button
@@ -122,7 +122,7 @@ export function DatabaseView() {
             <Database className="w-5 h-5 text-purple-500" />
             Users Table
             <span className="ml-auto text-[10px] font-bold bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-full uppercase tracking-widest">
-              sqlite_schema: users
+              d1_binding: DB
             </span>
           </CardTitle>
         </CardHeader>

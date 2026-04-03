@@ -100,7 +100,7 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="container mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
             {children}
           </div>
         </div>

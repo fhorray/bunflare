@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "preview": "wrangler dev",
-    "build": "bunx --bun bun-cloudflare build",
+    "build": "bunx --bun buncf build",
     "deploy": "bun run build --production && wrangler deploy",
     "test": "bun test"
   },
   "dependencies": {
-    "bun-cloudflare": "workspace:*",
+    "buncf": "workspace:*",
     "wrangler": "latest"
   }
 }

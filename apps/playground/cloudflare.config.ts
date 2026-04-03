@@ -1,4 +1,4 @@
-import { defineConfig } from "bun-cloudflare/config";
+import { defineConfig } from "buncf/config";
 import tailwind from "bun-plugin-tailwind";
 
 export default defineConfig({

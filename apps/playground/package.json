@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "start": "NODE_ENV=production bun src/index.ts",
-    "build": "bunx --bun bun-cloudflare build",
+    "build": "bunx --bun buncf build",
     "deploy": "bun run build --production && wrangler deploy",
-    "preview": "wrangler preview"
+    "preview": "wrangler preview",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
@@ -21,7 +22,7 @@
     "react": "^19",
     "react-dom": "^19",
     "tailwind-merge": "^3.3.1",
-    "bun-cloudflare": "workspace:*"
+    "buncf": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19",

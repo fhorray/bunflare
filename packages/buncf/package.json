@@ -1,0 +1,71 @@
+{
+  "name": "buncf",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "buncf: High-performance Cloudflare Workers development with Bun.",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "bun",
+    "serverless",
+    "typescript",
+    "d1",
+    "r2",
+    "kv"
+  ],
+  "author": "fhorray",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fhorray/buncf.git",
+    "directory": "packages/buncf"
+  },
+  "bugs": {
+    "url": "https://github.com/fhorray/buncf/issues"
+  },
+  "homepage": "https://github.com/fhorray/buncf#readme",
+  "scripts": {
+    "build": "tsc --emitDeclarationOnly",
+    "test": "bun test",
+    "check-types": "tsc --noEmit",
+    "lint": "bunx biome check ."
+  },
+  "type": "module",
+  "bin": {
+    "buncf": "./src/cli/index.ts"
+  },
+  "source": "./src/index.ts",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/types.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/types.ts"
+    },
+    "./plugin": {
+      "import": "./src/plugin.ts"
+    },
+    "./config": {
+      "import": "./src/config.ts"
+    },
+    "./preload": {
+      "import": "./src/preload.ts"
+    },
+    "./runtime": {
+      "import": "./src/runtime/context.ts"
+    }
+  },
+  "files": [
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "typescript": "^5",
+    "wrangler": "^3.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260403.1",
+    "@types/bun": "latest"
+  }
+}

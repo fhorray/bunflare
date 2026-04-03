@@ -1,4 +1,4 @@
-import { getBunCloudflareContext } from "bun-cloudflare";
+import { getBunCloudflareContext } from "buncf";
 import { Database } from "bun:sqlite";
 
 // Instancia o banco de dados (será transformado para Cloudflare D1 no build)

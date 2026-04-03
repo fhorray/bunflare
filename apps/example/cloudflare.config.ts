@@ -1,4 +1,4 @@
-import { defineConfig } from "bun-cloudflare";
+import { defineConfig } from "buncf";
 
 export default defineConfig({
   workerName: "example-worker",

@@ -1,10 +1,6 @@
 import { serve } from "bun";
-import { Database } from "bun:sqlite";
-import { getBunCloudflareContext } from "bun-cloudflare/runtime";
+import { getCloudflareContext } from "buncf/runtime";
 import index from "./index.html";
-
-// Database instance - automatically transformed to Cloudflare D1 on build
-const db = new Database("DB");
 
 const server = serve({
   routes: {
@@ -26,52 +22,55 @@ const server = serve({
       return Response.json({ message: `Hello, ${name}!` });
     },
 
-    // ─── Routes: D1 (SQLite → Cloudflare D1) ────────────────────────────
+    // ─── Routes: D1 (Native Cloudflare D1) ────────────────────────────
     "/api/db": {
       async GET(req) {
-        await db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)");
-        const users = await db.query("SELECT * FROM users").all();
+        const { env, cf, ctx } = getCloudflareContext();
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)").run();
+        const users = (await env.DB.prepare("SELECT * FROM users").all()).results;
         return Response.json({ message: "Data from D1", users });
       },
       async POST(req) {
-        const body = await req.json();
+        const { env } = getCloudflareContext();
+        const body = await req.json() as { name?: string };
         const name = body.name || `User ${new Date().toISOString()}`;
-        await db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)");
-        await db.query("INSERT INTO users (name) VALUES (?)").run(name);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)").run();
+        await env.DB.prepare("INSERT INTO users (name) VALUES (?)").bind(name).run();
         return Response.json({ message: "User inserted successfully" });
       },
     },
 
     "/api/db/delete": {
       async POST(req) {
-        const body = await req.json();
+        const { env } = getCloudflareContext();
+        const body = await req.json() as { id?: number };
         const id = body.id;
         if (!id) return Response.json({ error: "Missing ID" }, { status: 400 });
-        await db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)");
-        await db.query("DELETE FROM users WHERE id = ?").run(id);
+        await env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)").run();
+        await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
         return Response.json({ message: "User deleted successfully" });
       },
     },
 
-    // ─── Routes: R2 Asset Manager ──────────────────────────────────────
+    // ─── Routes: R2 Asset Manager (Native Cloudflare R2) ────────────────
     "/api/storage/list": async (req) => {
       try {
+        const { env } = getCloudflareContext();
         const url = new URL(req.url);
         const prefix = url.searchParams.get("prefix") || "";
         const delimiter = url.searchParams.get("delimiter") || "/";
 
-        // Using the newly overhauled Bun.s3.list API
-        const list = await Bun.s3.list({ prefix, delimiter });
-        
-        return Response.json({ 
-          objects: (list.contents || []).map((o: any) => ({
+        const list = await env.BUCKET.list({ prefix, delimiter });
+
+        return Response.json({
+          objects: (list.objects || []).map((o: any) => ({
             key: o.key,
             size: o.size,
-            uploaded: o.lastModified,
+            uploaded: o.uploaded,
             etag: o.etag,
-            contentType: "application/octet-stream" // Will be refined in frontend or via /stat
+            contentType: "application/octet-stream"
           })),
-          prefixes: list.commonPrefixes || []
+          prefixes: list.delimitedPrefixes || []
         });
       } catch (e: any) {
         return Response.json({ error: e.message }, { status: 500 });
@@ -79,32 +78,32 @@ const server = serve({
     },
 
     "/api/storage/stat": async (req) => {
-        const url = new URL(req.url);
-        const key = url.searchParams.get("key");
-        if (!key) return Response.json({ error: "Missing key" }, { status: 400 });
-        
-        try {
-            // Using the new Bun.s3.stat API
-            const stat = await Bun.s3.stat(key);
-            return Response.json(stat);
-        } catch (e: any) {
-            return Response.json({ error: e.message }, { status: 404 });
-        }
+      const { env } = getCloudflareContext();
+      const url = new URL(req.url);
+      const key = url.searchParams.get("key");
+      if (!key) return Response.json({ error: "Missing key" }, { status: 400 });
+
+      try {
+        const stat = await env.BUCKET.head(key);
+        if (!stat) throw new Error("File not found");
+        return Response.json(stat);
+      } catch (e: any) {
+        return Response.json({ error: e.message }, { status: 404 });
+      }
     },
 
     "/api/storage/file/*": async (req) => {
+      const { env } = getCloudflareContext();
       const url = new URL(req.url);
       const key = url.pathname.replace("/api/storage/file/", "");
       if (!key) return new Response("Not Found", { status: 404 });
 
-      // Using Bun.file with s3:// protocol!
-      const file = Bun.file(`s3://BUCKET/${key}`);
-      const exists = await file.exists();
-      if (!exists) return new Response("File not found", { status: 404 });
+      const obj = await env.BUCKET.get(key);
+      if (!obj) return new Response("File not found", { status: 404 });
 
-      return new Response(await file.arrayBuffer(), {
+      return new Response(await obj.arrayBuffer(), {
         headers: {
-          "Content-Type": file.type || "application/octet-stream",
+          "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
           "Content-Disposition": `inline; filename="${key}"`
         }
       });
@@ -112,15 +111,15 @@ const server = serve({
 
     "/api/storage/upload": async (req) => {
       try {
+        const { env } = getCloudflareContext();
         const formData = await req.formData();
         const file = formData.get("file") as File;
         if (!file) return Response.json({ error: "No file uploaded" }, { status: 400 });
 
-        // Using S3Client.write static method
-        await Bun.s3.write(file.name, await file.arrayBuffer(), {
-            type: file.type
+        await env.BUCKET.put(file.name, await file.arrayBuffer(), {
+          httpMetadata: { contentType: file.type }
         });
-        
+
         return Response.json({ message: "Upload successful", key: file.name });
       } catch (e: any) {
         return Response.json({ error: e.message }, { status: 500 });
@@ -128,62 +127,34 @@ const server = serve({
     },
 
     "/api/storage/delete": async (req) => {
-      const { key } = await req.json();
+      const { env } = getCloudflareContext();
+      const { key } = await req.json() as { key: string };
       if (!key) return Response.json({ error: "Missing key" }, { status: 400 });
-      
-      // Using Bun.s3.delete
-      await Bun.s3.delete(key);
+
+      await env.BUCKET.delete(key);
       return Response.json({ message: "Deleted successfully" });
     },
 
-    // Legacy single-file routes (kept for backward compat or simple tests)
-    "/api/file": {
-      async GET(req) {
-        const file = Bun.file("playground-data.txt");
-        const exists = await file.exists();
-        const content = exists
-          ? await file.text()
-          : "No content yet. Use POST /api/write to create some.";
-        return new Response(content, { headers: { "Content-Type": "text/plain" } });
-      },
-    },
-
-    "/api/write": {
-      async POST(req) {
-        const body = await req.json();
-        const content = body.content || `Hello from R2! Written at ${new Date().toISOString()}`;
-        await Bun.write("playground-data.txt", content);
-        return Response.json({ message: "Successfully wrote to R2!" });
-      },
-    },
-
-    "/api/file/delete": {
-      async DELETE(req) {
-        // Bun.write with empty content signals deletion intent in the shim
-        await Bun.write("playground-data.txt", "");
-        return Response.json({ message: "Successfully deleted from R2!" });
-      },
-    },
-
-    // ─── Routes: KV (Bun.redis → Cloudflare KV) ──────────────────────
-    // Bun.redis is automatically transformed to the KV shim on build.
-    // In Bun locally, it connects to a real Redis server (via preload mock).
+    // ─── Routes: KV (Native Cloudflare KV) ──────────────────────
     "/api/redis": {
       async GET(req) {
-        const count = await Bun.redis.get("playground_count");
+        const { env } = getCloudflareContext();
+        const count = await env.REDIS.get("playground_count");
         return Response.json({ count: parseInt(count ?? "0") });
       },
       async POST(req) {
-        const current = await Bun.redis.get("playground_count");
+        const { env } = getCloudflareContext();
+        const current = await env.REDIS.get("playground_count");
         const next = (parseInt(current ?? "0") + 1).toString();
-        await Bun.redis.set("playground_count", next);
+        await env.REDIS.put("playground_count", next);
         return Response.json({ count: parseInt(next) });
       },
     },
 
     "/api/redis/delete": {
       async POST(req) {
-        await Bun.redis.del("playground_count");
+        const { env } = getCloudflareContext();
+        await env.REDIS.delete("playground_count");
         return Response.json({ count: 0 });
       },
     },

@@ -33,7 +33,7 @@
 		}
 	],
 	"build": {
-		"command": "bunx --bun bun-cloudflare build",
+		"command": "bunx --bun buncf build",
 		"watch_dir": "src"
 	}
 }
