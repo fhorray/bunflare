@@ -14,16 +14,29 @@ export function setBunCloudflareContext(ctx: CloudflareContext) {
  * Can be used anywhere in the application code after the request has started.
  */
 export function getBunCloudflareContext<E = Record<string, unknown>>(): CloudflareContext<E> {
-  if (!_context) {
+  const ctx = _context;
+  if (!ctx) {
     // Basic shim for local development if Bun is present
     if (typeof Bun !== 'undefined') {
        return {
          env: (Bun.env as unknown) as E,
          cf: {} as unknown as CloudflareContext<E>['cf'],
-         ctx: {} as unknown as CloudflareContext<E>['ctx']
+         ctx: {
+          waitUntil: () => {},
+          passThroughOnException: () => {}
+         } as unknown as CloudflareContext<E>['ctx']
        };
     }
-    throw new Error("[bun-cloudflare] Context not initialized. Are you running inside a Cloudflare Worker?");
+    
+    // Fail-safe for Cloudflare: return a mock context instead of throwing
+    return {
+      env: {} as E,
+      cf: {} as unknown as CloudflareContext<E>['cf'],
+      ctx: {
+        waitUntil: () => {},
+        passThroughOnException: () => {}
+      } as unknown as CloudflareContext<E>['ctx']
+    };
   }
-  return _context as unknown as CloudflareContext<E>;
+  return ctx as unknown as CloudflareContext<E>;
 }

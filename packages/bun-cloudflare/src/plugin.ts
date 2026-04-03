@@ -27,18 +27,20 @@ export function cloudflarePlugin(config?: BunCloudflareConfig): BunPlugin {
 
       // 3. Load and transform source code
       build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, async (args) => {
-        // Skip node_modules
-        if (args.path.includes("node_modules")) return;
-
         const source = readFileSync(args.path, "utf8");
-
-        // Apply transformations in order
-        const transformed = applyTransforms(source, args.path);
-
         const extension = args.path.split('.').pop() as string;
         const loader = (extension === 'ts' || extension === 'tsx' || extension === 'js' || extension === 'jsx')
           ? extension as 'ts' | 'tsx' | 'js' | 'jsx'
           : 'js';
+
+        // Skip node_modules and internal plugin files - but STILL RETURN THE ORIGINAL CONTENT
+        // Using a more specific check to avoid skipping files in projects that happen to have "bun-cloudflare" in their path
+        if (args.path.includes("node_modules") || args.path.includes("/packages/bun-cloudflare/")) {
+          return { contents: source, loader };
+        }
+
+        // Apply transformations in order
+        const transformed = applyTransforms(source, args.path);
 
         if (transformed === source) {
           return { contents: source, loader };

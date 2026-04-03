@@ -19,9 +19,13 @@ export async function loadWranglerConfig(path?: string): Promise<Record<string, 
     }
     
     if (searchPath.endsWith(".json") || searchPath.endsWith(".jsonc")) {
-        // Strip comments for JSONC support
-        const cleanJson = content.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "");
-        return JSON.parse(cleanJson);
+        try {
+            // @ts-ignore
+            return Bun.JSONC.parse(content);
+        } catch (err) {
+            console.error(`[bun-cloudflare] ❌ Error parsing ${searchPath}:`, err);
+            return null;
+        }
     }
     
     return null;

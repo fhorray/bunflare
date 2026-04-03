@@ -6,10 +6,11 @@ The easiest way to run your Bun applications on Cloudflare Workers.
 
 ## Features
 
-- **Seamless Transformation**: Use `Bun.serve`, `Bun.env`, `bun:sqlite`, and `Bun.file` directly — they just work on Cloudflare.
+- **Seamless Transformation**: Use `Bun.serve`, `Bun.env`, `bun:sqlite`, and `Bun.file` directly — everything works on Cloudflare.
 - **Runtime Context**: Access Cloudflare `env`, `ctx`, and `cf` objects anywhere in your code.
-- **Auto-detection**: Automatically detects which Cloudflare bindings (D1, R2, KV) your code needs and can even generate a `wrangler.toml` for you.
-- **Wrangler Integration**: Supports `wrangler.toml`, `wrangler.json`, and `wrangler.jsonc` out of the box.
+- **Persistent Local Dev**: Emulates Cloudflare bindings (R2, KV, D1) locally using the filesystem (`.wrangler/state`), allowing you to run `bun run index.ts` without needing `wrangler dev`.
+- **Hybrid Export**: The original `Bun.serve` becomes a Cloudflare-compatible `export default`, maintaining native compatibility with Bun.
+- **Built-in CLI**: Robust `build` command with support for production, minification, and bundle size reports.
 
 ## Installation
 
@@ -19,26 +20,30 @@ bun add -d bun-cloudflare
 
 ## Usage
 
-### 1. Simple setup in your build script
+### 1. Local Development (Native Bun)
 
-```typescript
-import { cloudflarePlugin } from "bun-cloudflare/plugin";
+You can run your project natively with Bun and have access to persistent Cloudflare mocks:
 
-await Bun.build({
-  entrypoints: ["./src/index.ts"],
-  outdir: "./dist",
-  target: "browser", // Must be browser or bun (with transformations)
-  plugins: [
-    cloudflarePlugin({
-      generateWranglerConfig: true,
-      workerName: "my-cool-worker",
-      compatibilityDate: "2024-04-03"
-    })
-  ]
-});
+```bash
+# Add to your preload or bunfig.toml
+bun run --preload bun-cloudflare/preload src/index.ts
 ```
 
-### 2. Write your Bun code
+The plugin will automatically load your `wrangler.jsonc` and initialize file-based emulators.
+
+### 2. Built-in CLI for Production
+
+`bun-cloudflare` comes with a CLI to simplify the build process:
+
+```bash
+# Development build (with sourcemaps)
+bunx bun-cloudflare build
+
+# Production build (minified, console.log dropped, no sourcemaps)
+bunx bun-cloudflare build --production
+```
+
+### 3. Code Example
 
 ```typescript
 // src/index.ts
@@ -47,9 +52,11 @@ import { Database } from "bun:sqlite";
 
 const db = new Database("DB");
 
+// This object will be exported as default for the Cloudflare Worker
+// but also executed by Bun natively during development.
 Bun.serve({
   async fetch(req) {
-    const { env } = getBunCloudflareContext(); // Access Cloudflare Bindings
+    const { env } = getBunCloudflareContext(); // Access Bindings (Mocks in dev)
     
     // SQLite (D1) usage
     await db.exec("CREATE TABLE IF NOT EXISTS counts (id INTEGER, val INTEGER)");
@@ -67,19 +74,41 @@ Bun.serve({
 
 ## Configuration
 
-The `cloudflarePlugin` accepts the following options:
+Create a `cloudflare.config.ts` file in the project root:
+
+```typescript
+import { defineConfig } from "bun-cloudflare/config";
+
+export default defineConfig({
+  entrypoint: "./src/index.ts",
+  outdir: "./dist",
+  minify: true,
+  target: "browser",
+  sourcemap: "linked",
+  define: {
+    "APP_NAME": JSON.stringify("My Worker")
+  }
+});
+```
+
+### Options Reference
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `workerName` | `string` | Name of your worker |
-| `compatibilityDate` | `string` | Cloudflare compatibility date |
-| `generateWranglerConfig` | `boolean` | If true, generates a `wrangler.toml` on build end |
-| `wranglerConfigPath` | `string` | Custom path to an existing wrangler config |
-| `bindings` | `object` | Explicitly define D1, R2, KV, or Vars bindings |
+| `entrypoint` | `string` | Worker entry point (default: `./src/index.ts`) |
+| `outdir` | `string` | Output directory (default: `./dist`) |
+| `target` | `"browser" \| "bun" \| "node"` | Execution environment target |
+| `minify` | `boolean \| object` | Enable/configure minification |
+| `sourcemap` | `string` | Sourcemap type (`linked`, `inline`, `none`) |
+| `define` | `object` | Build-time constants for replacement |
+| `drop` | `string[]` | Function calls to remove (e.g., `["console"]`) |
+| `external` | `string[]` | Modules to keep external to the bundle |
+| `splitting` | `boolean` | Enable code splitting for chunks |
+| `features` | `string[]` | Enable `bun:bundle` feature flags |
 
 ## How it works
 
-The plugin performs a series of static analysis and string replacements to map Bun's synchronous APIs to Cloudflare's asynchronous platform APIs. For example, `db.query(...).all()` is transformed to `await db.query(...).all()` and redirected to a D1 shim.
+The plugin uses `Bun.build` to perform static code transformations. It identifies patterns like `Bun.serve` and converts them to the Worker format (`export default { fetch }`). During local development, the `preload` system injects emulators that read and write to local files, simulating Cloudflare services.
 
 ## License
 

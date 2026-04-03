@@ -18,7 +18,7 @@ Bun.serve({
 
     // 2. Demo de SQLite (D1)
     if (url.pathname === "/db") {
-      await db.exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)");
+      await db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)");
       await db.query("INSERT INTO users (name) VALUES (?)").run("User at " + new Date().toISOString());
       const users = await db.query("SELECT * FROM users").all();
       return Response.json({ message: "Data from D1", users });

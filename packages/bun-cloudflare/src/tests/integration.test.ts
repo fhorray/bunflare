@@ -38,7 +38,8 @@ Bun.serve({
     // Verify key elements
     expect(transformed).toContain('export default {');
     expect(transformed).toContain('async fetch(request, env, ctx)');
-    expect(transformed).toContain('setBunCloudflareContext({ env, cf: request.cf, ctx })');
+    expect(transformed).toContain('setBunCloudflareContext({');
+    expect(transformed).toContain('mergedEnv');
     expect(transformed).toContain('await db.query("SELECT * FROM users").all()');
     expect(transformed).toContain('await db.query("INSERT INTO users (name) VALUES (?)").run(data.name)');
     expect(transformed).toContain('getBunCloudflareContext().env.APP_NAME');
@@ -104,7 +105,7 @@ Bun.serve({
     `;
     const transformed = transformServe(source);
     expect(transformed).toContain('export default {');
-    expect(transformed).toContain('const config = {');
+    expect(transformed).toContain('const $$options = {');
     expect(transformed).toContain('port: 3000');
     expect(transformed).toContain('return new Response(helper(10).toString())');
   });

@@ -45,7 +45,12 @@ export class Database {
     };
   }
 
-  exec(sql: string) {
-    return this.getDB().exec(sql);
+  async run(sql: string, ...params: unknown[]) {
+    const stmt = this.getDB().prepare(sql);
+    return await stmt.bind(...params).run();
+  }
+
+  async exec(sql: string) {
+    return await this.getDB().exec(sql);
   }
 }

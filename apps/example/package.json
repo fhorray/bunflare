@@ -7,6 +7,7 @@
     "dev": "bun --hot src/index.ts",
     "preview": "wrangler dev",
     "build": "bunx --bun bun-cloudflare build",
+    "deploy": "bun run build --production && wrangler deploy",
     "test": "bun test"
   },
   "dependencies": {

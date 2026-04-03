@@ -15,7 +15,7 @@ describe("applyTransforms", () => {
       
       expect(transformed).toContain("export default {");
       expect(transformed).toContain("async fetch(request, env, ctx)");
-      expect(transformed).toContain('const config = {');
+      expect(transformed).toContain('const $$options = {');
     });
 
     it("should NOT transform serve() imported from 'bun' (use Bun.serve instead)", () => {
@@ -37,7 +37,7 @@ describe("applyTransforms", () => {
         Bun.serve(myConfig);
       `;
       const transformed = applyTransforms(source, "index.ts");
-      expect(transformed).toContain("const config = myConfig;");
+      expect(transformed).toContain("const $$options = myConfig;");
     });
   });
 
@@ -47,6 +47,13 @@ describe("applyTransforms", () => {
       const transformed = applyTransforms(source, "index.ts");
       expect(transformed).toContain("getBunCloudflareContext().env.API_KEY");
       expect(transformed).toContain('import { getBunCloudflareContext } from "bun-cloudflare"');
+    });
+
+    it("should NOT transform NODE_ENV", () => {
+      const source = "const v = process.env.NODE_ENV;";
+      const transformed = applyTransforms(source, "index.ts");
+      expect(transformed).toContain("process.env.NODE_ENV");
+      expect(transformed).not.toContain("getBunCloudflareContext().env.NODE_ENV");
     });
 
     it("should transform process.env.VARIABLE", () => {

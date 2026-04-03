@@ -3,5 +3,8 @@ import { defineConfig } from "bun-cloudflare";
 export default defineConfig({
   workerName: "example-worker",
   entrypoint: "./src/index.ts",
-  outdir: "./dist"
+  outdir: "./dist",
+  target: "browser",
+  minify: true,
+  sourcemap: "linked"
 });

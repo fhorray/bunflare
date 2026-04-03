@@ -41,7 +41,7 @@ describe("CLI Integration", () => {
         
         // We check if the build process started. It might fail on external resolution 
         // in temp dirs, but we want to know it didn't crash and tried to build.
-        expect(stdout).toContain("[bun-cloudflare] 📦 Building ./src/index.ts to ./dist...");
+        expect(stdout).toContain("[bun-cloudflare] 📦 Building ./src/index.ts to ./dist");
         
         if (result.exitCode === 0) {
             expect(stdout).toContain("[bun-cloudflare] ✨ Build successful!");
@@ -53,14 +53,14 @@ describe("CLI Integration", () => {
         }
     });
 
-    it("should print help message on unknown command", () => {
         const result = spawnSync(["bun", cliPath, "--help"], {
             cwd: testDir
         });
         const output = result.stdout.toString();
-        expect(output).toContain("Usage:");
-        expect(output).toContain("bunx bun-cloudflare <command>");
-    });
+        // Check for common Portuguese terms in the new help message
+        expect(output).toContain("Uso:");
+        expect(output).toContain("Comandos:");
+        expect(output).toContain("bunx bun-cloudflare <comando>");
 
     afterAll(() => {
         rmSync(testDir, { recursive: true, force: true });
