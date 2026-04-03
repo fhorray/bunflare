@@ -8,21 +8,18 @@ export function transformFileIO(source: string): string {
 
   let transformed = source;
 
-  // Replace Bun.file(path) calls
-  // Transforming these is tricky because Bun.file() is synchronous but its methods are async.
-  // The methods (.text(), .json(), etc) already need to be awaited in Bun, so no changes there.
-  // We just need to replace Bun.file with our shim's file function.
-  transformed = transformed.replace(/Bun\.file\(/g, "file(");
+  // Replace Bun.file(path) calls with __bunFile to avoid TDZ collision
+  // when user writes: const file = Bun.file(...)
+  transformed = transformed.replace(/Bun\.file\(/g, "__bunFile(");
   
   // Replace Bun.write(path, data) calls
-  // Ensure it's awaited and use the shim's write
-  transformed = transformed.replace(/await\s+Bun\.write\(/g, "await write(");
-  transformed = transformed.replace(/(?<!await\s)Bun\.write\(/g, "await write(");
+  transformed = transformed.replace(/await\s+Bun\.write\(/g, "await __bunWrite(");
+  transformed = transformed.replace(/(?<!await\s)Bun\.write\(/g, "await __bunWrite(");
 
   // Add imports if not present
-  if (transformed.includes("file(") || transformed.includes("write(")) {
-    if (!transformed.includes('import { file, write } from "bun-cloudflare/shims/file-io"')) {
-       transformed = `import { file, write } from "bun-cloudflare/shims/file-io";\n` + transformed;
+  if (transformed.includes("__bunFile(") || transformed.includes("__bunWrite(")) {
+    if (!transformed.includes('import { file as __bunFile, write as __bunWrite } from "bun-cloudflare/shims/file-io"')) {
+       transformed = `import { file as __bunFile, write as __bunWrite } from "bun-cloudflare/shims/file-io";\n` + transformed;
     }
   }
 

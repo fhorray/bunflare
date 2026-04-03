@@ -3,6 +3,7 @@ import { transformEnv } from "./env-transform";
 import { transformSqlite } from "./sqlite-transform";
 import { transformFileIO } from "./file-io-transform";
 import { transformS3 } from "./s3-transform";
+import { transformRedis } from "./redis-transform";
 import { transformSecondary } from "./secondary-transform";
 
 /**
@@ -20,6 +21,7 @@ export function applyTransforms(source: string, filePath: string): string {
   transformed = transformSqlite(transformed);
   transformed = transformFileIO(transformed);
   transformed = transformS3(transformed);
+  transformed = transformRedis(transformed);
   transformed = transformSecondary(transformed);
 
   return transformed;
