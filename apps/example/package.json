@@ -1,0 +1,16 @@
+{
+  "name": "example-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "preview": "wrangler dev",
+    "build": "bunx --bun bun-cloudflare build",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "bun-cloudflare": "workspace:*",
+    "wrangler": "latest"
+  }
+}

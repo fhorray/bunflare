@@ -1,0 +1,3 @@
+# Scripts to run before executing a file or script
+# This registers the cloudflare plugin to shim bun:sqlite etc. automatically
+preload = ["bun-cloudflare/preload"]

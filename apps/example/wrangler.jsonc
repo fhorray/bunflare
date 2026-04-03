@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "example-worker",
+  "main": "dist/index.js",
+  "compatibility_date": "2026-04-03",
+  "compatibility_flags": [
+    "nodejs_compat",
+  ],
+  "vars": {
+    "APP_NAME": "Example App from Bun Environment"
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+  },
+  "kv_namespaces": [
+    {
+      "binding": "REDIS",
+      "id": "redis-kv"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "assets-bucket"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "DB",
+      "database_id": "REPLACE_ME"
+    }
+  ],
+  "build": {
+    "command": "bunx --bun bun-cloudflare build",
+    "watch_dir": "src"
+  },
+  // "dev": {
+  // }
+}

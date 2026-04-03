@@ -1,0 +1,56 @@
+{
+  "name": "bun-cloudflare",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "bun-cloudflare": "./src/cli/index.ts"
+  },
+  "source": "./src/index.ts",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/types.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/types.ts"
+    },
+    "./plugin": {
+      "import": "./src/plugin.ts"
+    },
+    "./config": {
+      "import": "./src/config.ts"
+    },
+    "./preload": {
+      "import": "./src/preload.ts"
+    },
+    "./shims/sqlite": {
+      "import": "./src/shims/sqlite.ts"
+    },
+    "./shims/file-io": {
+      "import": "./src/shims/file-io.ts"
+    },
+    "./shims/redis": {
+      "import": "./src/shims/redis.ts"
+    },
+    "./shims/crypto": {
+      "import": "./src/shims/crypto.ts"
+    },
+    "./shims/compression": {
+      "import": "./src/shims/compression.ts"
+    },
+    "./shims/cookies": {
+      "import": "./src/shims/cookies.ts"
+    },
+    "./shims/s3": {
+      "import": "./src/shims/s3.ts"
+    }
+  },
+  "peerDependencies": {
+    "typescript": "^5",
+    "wrangler": "^3.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260403.1",
+    "@types/bun": "latest"
+  }
+}
