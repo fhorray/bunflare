@@ -23,6 +23,32 @@ export const ImageProcessor = container({
   }
 });
 
+// 3. Define a Chat Hub Durable Object for multi-user WebSockets
+export const ChatHub = durable({
+  async fetch(request: Request, state: DurableObjectState, env: CloudflareBindings) {
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+
+    // Using WebSocket 2.0 API: ws.subscribe()
+    server.serialize = () => ({});
+    server.subscribe("chat");
+
+    return new Response(null, { status: 101, webSocket: client });
+  },
+
+  // Handlers for Hibernatable WebSockets (High Efficiency)
+  async webSocketMessage(ws: WebSocket, message: string) {
+    // Using WebSocket 2.0 API: ws.publish()
+    // Broadcast to everyone in the "chat" topic (excluding sender)
+    ws.publish("chat", message);
+  },
+
+  async webSocketClose(ws: WebSocket) {
+    console.log("Chat connection closed");
+  }
+});
+
 // 2. Define a Simple Workflow using the new fluid API
 export const ProcessingWorkflow = workflow({
   async run(event: WorkflowEvent<{ triggeredAt: string }>, step: WorkflowStep, env: CloudflareBindings) {
@@ -34,6 +60,17 @@ export const ProcessingWorkflow = workflow({
 
     await step.do("log result", async () => {
       console.log("Workflow finished:", result);
+    });
+
+    // ─── FINAL STATUS UPDATE ───────────────────────────────────────
+    // This ensures the dashboard sees "success" instead of "running"
+    // after the page is reloaded.
+    await step.do("update history", async () => {
+      if (env.DB) {
+        await env.DB.prepare("UPDATE workflow_history SET status = ?, endTime = ? WHERE id = ?")
+          .bind("success", new Date().toISOString(), event.instanceId)
+          .run();
+      }
     });
   }
 });
@@ -63,22 +100,57 @@ app.post("/api/workflow/start", async (c) => {
     params: { triggeredAt: new Date().toISOString() }
   });
 
+  // Log to D1 history for persistence in the UI
+  if (env.DB) {
+    try {
+      await env.DB.prepare("CREATE TABLE IF NOT EXISTS workflow_history (id TEXT PRIMARY KEY, status TEXT, startTime TEXT, endTime TEXT, payload TEXT)").run();
+      await env.DB.prepare("INSERT INTO workflow_history (id, status, startTime, payload) VALUES (?, ?, ?, ?)")
+        .bind(instance.id, "running", new Date().toISOString(), JSON.stringify({ triggeredAt: new Date().toISOString() }))
+        .run();
+    } catch (e) {
+      console.error("Failed to log workflow start to D1:", e);
+    }
+  }
+
   return c.json({
     id: instance.id,
     status: "Instance created"
   });
 });
 
+app.get("/api/workflow/history", async (c) => {
+  const { env } = getCloudflareContext();
+  if (!env.DB) return c.json({ history: [] });
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS workflow_history (id TEXT PRIMARY KEY, status TEXT, startTime TEXT, endTime TEXT, payload TEXT)").run();
+  const { results } = await env.DB.prepare("SELECT * FROM workflow_history ORDER BY startTime DESC LIMIT 10").all();
+
+  // Map D1 results to what the UI expects
+  const history = results.map((r: any) => ({
+    id: r.id,
+    status: r.status,
+    startTime: new Date(r.startTime).toLocaleTimeString(),
+    endTime: r.endTime ? new Date(r.endTime).toLocaleTimeString() : undefined,
+    steps: [
+      { title: 'Initialization', status: 'completed' },
+      { title: 'Execution', status: r.status === 'running' ? 'pending' : 'completed' },
+      { title: 'Durable Sleep', status: r.status === 'running' ? 'pending' : 'completed' },
+      { title: 'Success', status: r.status === 'success' ? 'completed' : 'pending' },
+    ]
+  }));
+
+  return c.json({ history });
+});
+
 app.get("/api/container/test", async (c) => {
   const { env } = getCloudflareContext();
   if (!env.IMAGE_PROCESSOR) return c.json({ error: "Container binding missing" }, { status: 500 });
   const instance = env.IMAGE_PROCESSOR.getByName("test-instance");
-  
+
   // Rewrite the request to the container's root
   const url = new URL(c.req.url);
   url.pathname = "/";
   const proxyReq = new Request(url.toString(), c.req.raw);
-  
+
   return instance.fetch(proxyReq);
 });
 
@@ -92,15 +164,15 @@ app.get("/api/hello/:name", (c) => {
 });
 
 // ─── Routes: D1 Database (Native Cloudflare D1) ──────────
-app.get("/api/db/users", async (c) => {
+app.get("/api/db", async (c) => {
   const { env } = getCloudflareContext();
   if (!env.DB) return c.json({ error: "DB binding missing" }, { status: 500 });
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)").run();
   const { results } = await env.DB.prepare("SELECT * FROM users").all();
-  return c.json(results);
+  return c.json({ users: results });
 });
 
-app.post("/api/db/insert", async (c) => {
+app.post("/api/db", async (c) => {
   const { env } = getCloudflareContext();
   const body = await c.req.json() as { name?: string };
   const name = body.name || `User ${Math.floor(Math.random() * 1000)}`;
@@ -223,7 +295,7 @@ app.post("/api/redis/delete", async (c) => {
 // Serve frontend for all unmatched routes
 app.get("*", (c) => {
   if (typeof index === "string") return c.html(index);
-  return new Response(index as any, {
+  return new Response(index.toString(), {
     headers: { "Content-Type": "text/html" },
   });
 });
@@ -242,32 +314,23 @@ export default serve({
     "/api/files/*": (req) => {
       return Response.json({
         source: "Native buncf Router (Wildcard)",
-        path: (req as any).params.any
+        path: req.params.any
       });
     },
-    // 3. Method-based handler with params
-    "/api/echo/:message": {
-      GET: (req: any) => Response.json({ method: "GET", echo: req.params.message }),
-      POST: (req: any) => Response.json({ method: "POST", echo: req.params.message }),
+    // 3. Method-based handler with params (now imported for splitting test)
+    // @ts-ignore - Satisfaction for Bun.serve types which expect (req, srv) or (req)
+    "/api/echo/:message": async (req) => {
+      const { echoHandler } = await import("./handlers/echo");
+      return echoHandler(req);
     },
-    // 4. WebSocket Example
-    "/ws": (req, server) => {
-      const username = `User_${Math.floor(Math.random() * 1000)}`;
-      // @ts-ignore
-      const success = server.upgrade(req, { data: { username } });
-      return success ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-    }
-  },
-  websocket: {
-    open(ws: any) {
-      ws.subscribe("chat");
-      ws.publish("chat", `${ws.data.username} joined the chat`);
-    },
-    message(ws: any, message) {
-      ws.publish("chat", `${ws.data.username}: ${message}`);
-    },
-    close(ws: any) {
-      ws.publish("chat", `${ws.data.username} left the chat`);
+    // 4. WebSocket Example (Redirected to Durable Object for broadcasting)
+    "/ws": (req) => {
+      const { env } = getCloudflareContext();
+      if (!env.CHAT_HUB) return new Response("Chat Hub not found", { status: 500 });
+      const id = env.CHAT_HUB.idFromName("global-chat");
+      const hub = env.CHAT_HUB.get(id);
+      const rawRequest = req._rawRequest || req;
+      return hub.fetch(rawRequest);
     }
   },
   // @ts-ignore - transformed by buncf to Cloudflare Worker fetch(request, env, ctx)

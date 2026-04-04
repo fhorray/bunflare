@@ -41,6 +41,10 @@
 			{
 				"name": "IMAGE_PROCESSOR",
 				"class_name": "ImageProcessor"
+			},
+			{
+				"name": "CHAT_HUB",
+				"class_name": "ChatHub"
 			}
 		]
 	},
@@ -52,6 +56,10 @@
 		{
 			"tag": "v2",
 			"new_sqlite_classes": ["ImageProcessor"]
+		},
+		{
+			"tag": "v3",
+			"new_classes": ["ChatHub"]
 		}
 	],
 	"containers": [
@@ -68,8 +76,8 @@
 			"class_name": "ProcessingWorkflow"
 		}
 	],
-	"build": {
-		"command": "bun --bun run buncf build",
-		"watch_dir": "src"
-	}
+	// "build": {
+	// 	"command": "bun --bun run buncf build",
+	// 	"watch_dir": "src"
+	// }
 }

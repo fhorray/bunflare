@@ -12,14 +12,27 @@ import { Wifi, WifiOff, Zap, Send, MessageSquare } from 'lucide-react';
 
 export function RealtimeView() {
   const [ws, setWs] = useState<WebSocket | null>(null);
+  const [username] = useState(
+    () => `User_${Math.floor(Math.random() * 9000) + 1000}`
+  );
   const [wsStatus, setWsStatus] = useState<
     'disconnected' | 'connecting' | 'connected'
   >('disconnected');
   const [messages, setMessages] = useState<
-    { id: number; text: string; type: 'in' | 'out' | 'sys' }[]
+    { id: number; text: string; user: string; type: 'in' | 'out' | 'sys' }[]
   >([]);
   const [inputMessage, setInputMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Helper to hash username to a consistent, pleasant HSL color
+  const getUserColor = (name: string) => {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = Math.abs(hash) % 360;
+    return `hsl(${h}, 65%, 45%)`;
+  };
 
   const connectWs = () => {
     setWsStatus('connecting');
@@ -30,15 +43,34 @@ export function RealtimeView() {
       setWsStatus('connected');
       setMessages((prev) => [
         ...prev,
-        { id: Date.now(), text: 'Connected to edge hub', type: 'sys' },
+        {
+          id: Date.now(),
+          text: 'Connected to edge hub',
+          user: 'System',
+          type: 'sys',
+        },
       ]);
     };
 
     socket.onmessage = (event) => {
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now(), text: event.data, type: 'in' },
-      ]);
+      try {
+        const data = JSON.parse(event.data);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            text: data.text,
+            user: data.user,
+            type: data.user === username ? 'out' : 'in',
+          },
+        ]);
+      } catch (e) {
+        // Fallback for non-JSON messages
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now(), text: event.data, user: 'Unknown', type: 'in' },
+        ]);
+      }
     };
 
     socket.onclose = () => {
@@ -46,7 +78,7 @@ export function RealtimeView() {
       setWs(null);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now(), text: 'Disconnected', type: 'sys' },
+        { id: Date.now(), text: 'Disconnected', user: 'System', type: 'sys' },
       ]);
     };
 
@@ -59,10 +91,11 @@ export function RealtimeView() {
 
   const sendMessage = () => {
     if (ws && inputMessage) {
-      ws.send(inputMessage);
+      const payload = JSON.stringify({ user: username, text: inputMessage });
+      ws.send(payload);
       setMessages((prev) => [
         ...prev,
-        { id: Date.now(), text: inputMessage, type: 'out' },
+        { id: Date.now(), text: inputMessage, user: username, type: 'out' },
       ]);
       setInputMessage('');
     }
@@ -144,6 +177,18 @@ export function RealtimeView() {
                   key={m.id}
                   className={`flex flex-col ${m.type === 'out' ? 'items-end' : m.type === 'sys' ? 'items-center' : 'items-start'}`}
                 >
+                  {m.type !== 'sys' && (
+                    <span
+                      className="text-[9px] font-bold mb-1 px-1 flex items-center gap-1.5"
+                      style={{ color: getUserColor(m.user) }}
+                    >
+                      <div
+                        className="w-1 h-1 rounded-full"
+                        style={{ backgroundColor: getUserColor(m.user) }}
+                      />
+                      {m.user} {m.user === username && '(You)'}
+                    </span>
+                  )}
                   <div
                     className={`px-4 py-2 rounded-lg max-w-[80%] text-sm transition-colors ${
                       m.type === 'out'

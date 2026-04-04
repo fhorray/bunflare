@@ -53,6 +53,9 @@
     },
     "./runtime": {
       "import": "./src/runtime/context.ts"
+    },
+    "./html": {
+      "types": "./html.d.ts"
     }
   },
   "files": [
@@ -67,5 +70,9 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260403.1",
     "@types/bun": "latest"
+  },
+  "dependencies": {
+    "magic-string": "^0.30.21",
+    "oxc-parser": "^0.123.0"
   }
 }

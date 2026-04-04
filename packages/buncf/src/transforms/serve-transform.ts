@@ -1,208 +1,254 @@
-import { setBuncfContext } from "../runtime/context";
+import { parseSync } from "oxc-parser";
+import MagicString from "magic-string";
 
 /**
- * Finds the matching closing parenthesis for a Bun.serve( or serve( call.
- * This is more robust than a regex for nested structures.
+ * Main entry point for buncf code transformation.
+ * Uses OXC (Rust-powered AST parser) and MagicString for surgical replacement.
  */
-function findBalancedParen(source: string, startIndex: number): number {
-  let depth = 0;
-  for (let i = startIndex; i < source.length; i++) {
-    if (source[i] === "(") depth++;
-    if (source[i] === ")") {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
-}
-
-/**
- * Transforms durable({ ... }) calls into Cloudflare Durable Object classes.
- */
-export function transformDurables(source: string): string {
-  if (!source.includes("durable")) {
-    return source;
-  }
-
-  let transformed = source;
-
-  // 1. Remove ONLY 'durable' from the buncf import list, preserving others
-  transformed = transformed.replace(/import\s+\{([^}]*)\bdurable\b([^}]*)\}\s+from\s+['"]buncf['"];?/g, (match, before, after) => {
-    const combined = (before + after).trim();
-    if (!combined || combined === ",") return "";
-    // Clean up commas: ", ," -> ", " and remove leading/trailing commas
-    const cleaned = combined
-      .replace(/,\s*,/g, ",")
-      .replace(/^,|,$/g, "")
-      .trim();
-    if (!cleaned) return "";
-    return `import { ${cleaned} } from "buncf";`;
+export function transformSource(source: string, filename: string = "index.tsx"): string {
+  const s = new MagicString(source);
+  
+  // 1. Parse with OXC (supports TS and JSX)
+  // Correct signature: parseSync(filename, source, options)
+  const result = parseSync(filename, source, {
+    sourceType: filename.endsWith(".tsx") || filename.endsWith(".jsx") ? "module" : "module",
   });
 
-  // Find all [export] const Name = durable(
-  // Use a broad match and refined with balanced paren finding
-  const matches = [...transformed.matchAll(/\b(?:export\s+)?(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*durable\s*\(/g)];
+  if (result.errors.length > 0) {
+    // If it's a snippet for testing without full TS context, it might still parse or fail.
+    // We try to proceed but could log errors.
+  }
 
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const match = matches[i];
-    if (!match || match.index === undefined) continue;
+  const program = result.program;
+  const buncfImports = new Map<string, string>();
+  const bunImports = new Map<string, string>();
 
-    const matchIndex = match.index;
-    const fullMatch = match[0];
-    const name = match[1];
-    const isExported = fullMatch.startsWith("export");
+  // Helper to walk the AST
+  function walk(node: any, visitor: (node: any, ancestors: any[]) => void, ancestors: any[] = []) {
+    if (!node || typeof node !== "object") return;
+    
+    visitor(node, ancestors);
+    
+    const nextAncestors = [...ancestors, node];
+    for (const key in node) {
+      const child = node[key];
+      if (Array.isArray(child)) {
+        child.forEach(c => walk(c, visitor, nextAncestors));
+      } else if (child && typeof child === "object" && child.type) {
+        walk(child, visitor, nextAncestors);
+      }
+    }
+  }
 
-    const openParenIndex = matchIndex + fullMatch.length - 1;
-    const closingParenIndex = findBalancedParen(transformed, openParenIndex);
+  // 1. First pass: Identify imports and remove buncf/bun-helper ones
+  program.body.forEach((node: any) => {
+    if (node.type === "ImportDeclaration") {
+      const sourcePath = node.source.value;
+      const nSpan = node.span || {};
+      const nStart = node.start ?? nSpan.start;
+      const nEnd = node.end ?? nSpan.end;
 
-    if (closingParenIndex === -1) continue;
+      if (sourcePath === "buncf") {
+        let removedCount = 0;
+        node.specifiers.forEach((spec: any, idx: number) => {
+          if (spec.type === "ImportSpecifier") {
+            const importedName = spec.imported.name || spec.imported.value;
+            buncfImports.set(importedName, spec.local.name);
+            
+            if (["durable", "workflow", "container"].includes(importedName)) {
+              const sSpan = spec.span || {};
+              const sStart = spec.start ?? sSpan.start;
+              const sEnd = spec.end ?? sSpan.end;
+              if (sStart !== undefined && sEnd !== undefined) {
+                // Determine if we should also remove any following/leading commas
+                let removeStart = sStart;
+                let removeEnd = sEnd;
+                
+                // Peek ahead for a comma
+                const nextCharIdx = source.slice(sEnd).search(/[,\n}]/);
+                if (nextCharIdx !== -1 && source[sEnd + nextCharIdx] === ",") {
+                   removeEnd = sEnd + nextCharIdx + 1; // remove including comma
+                } else if (idx > 0) {
+                   // Peek behind for a comma if we are not the first
+                   const prevPart = source.slice(0, sStart);
+                   const lastCommaIdx = prevPart.lastIndexOf(",");
+                   if (lastCommaIdx !== -1 && !prevPart.slice(lastCommaIdx + 1).trim()) {
+                      removeStart = lastCommaIdx; 
+                   }
+                }
 
-    const options = transformed.slice(openParenIndex + 1, closingParenIndex);
+                s.remove(removeStart, removeEnd);
+                removedCount++;
+              }
+            }
+          }
+        });
+        
+        if (removedCount === node.specifiers.length) {
+          if (nStart !== undefined && nEnd !== undefined) s.remove(nStart, nEnd);
+        }
+      }
+      if (sourcePath === "bun") {
+        node.specifiers.forEach((spec: any) => {
+          if (spec.type === "ImportSpecifier") {
+            const importedName = spec.imported.name || spec.imported.value;
+            bunImports.set(importedName, spec.local.name);
+            if (importedName === "serve") {
+               const sSpan = spec.span || {};
+               const sStart = spec.start ?? sSpan.start;
+               const sEnd = spec.end ?? sSpan.end;
+               
+               if (node.specifiers.length === 1) {
+                 if (nStart !== undefined && nEnd !== undefined) s.remove(nStart, nEnd);
+               } else {
+                 if (sStart !== undefined && sEnd !== undefined) s.remove(sStart, sEnd);
+               }
+            }
+          }
+        });
+      }
+    }
+  });
 
-    const replacement = `
-${isExported ? "export " : ""}class ${name} {
+  // Track all imports to enable lazy loading of routes
+  const allImports = new Map<string, { source: string; imported: string }>();
+  program.body.forEach((node: any) => {
+    if (node.type === "ImportDeclaration" && node.source.value !== "buncf" && node.source.value !== "bun") {
+      node.specifiers.forEach((spec: any) => {
+        if (spec.type === "ImportSpecifier") {
+          allImports.set(spec.local.name, { source: node.source.value, imported: spec.imported.name || spec.imported.value });
+        } else if (spec.type === "ImportDefaultSpecifier") {
+          allImports.set(spec.local.name, { source: node.source.value, imported: "default" });
+        } else if (spec.type === "ImportNamespaceSpecifier") {
+          allImports.set(spec.local.name, { source: node.source.value, imported: "*" });
+        }
+      });
+    }
+  });
+
+  // Helper to check if an identifier is shadowed by a local declaration in the current scope chain
+  function isShadowed(name: string, ancestors: any[]): boolean {
+    // Walk up from most recent ancestor
+    for (let i = ancestors.length - 1; i >= 0; i--) {
+      const scopeNode = ancestors[i];
+      // Blocks, Programs, Functions, etc. can contain declarations
+      const declarations = scopeNode.body || (Array.isArray(scopeNode.body) ? scopeNode.body : []) || [];
+      if (scopeNode.type === "BlockStatement" || scopeNode.type === "Program" || scopeNode.type === "FunctionDeclaration" || scopeNode.type === "ArrowFunctionExpression") {
+        // Simple scan for variable/function declarations in this block
+        const body = Array.isArray(scopeNode.body) ? scopeNode.body : (scopeNode.body?.body || []);
+        if (body.length > 0) {
+          for (const item of body) {
+            if (item.type === "VariableDeclaration") {
+              if (item.declarations.some((d: any) => d.id.name === name)) return true;
+            }
+            if (item.type === "FunctionDeclaration") {
+              if (item.id?.name === name) return true;
+            }
+          }
+        }
+        // Also check function parameters
+        if (scopeNode.params?.some((p: any) => p.name === name || p.left?.name === name)) return true;
+      }
+    }
+    return false;
+  }
+
+  // 2. Second pass: Transform calls
+  let hasWorkflow = false;
+  let hasContainer = false;
+
+  walk(program, (node, ancestors) => {
+    if (node.type === "CallExpression") {
+      let calleeName = "";
+      if (node.callee.type === "Identifier") {
+        calleeName = node.callee.name;
+      } else if (node.callee.type === "MemberExpression" && node.callee.object?.name === "Bun" && (node.callee.property?.name === "serve" || node.callee.property?.value === "serve")) {
+        calleeName = "serve";
+      }
+
+      const isDurable = calleeName === (buncfImports.get("durable") || "durable") && !isShadowed(calleeName, ancestors);
+      const isWorkflow = calleeName === (buncfImports.get("workflow") || "workflow") && !isShadowed(calleeName, ancestors);
+      const isContainer = calleeName === (buncfImports.get("container") || "container") && !isShadowed(calleeName, ancestors);
+
+      if (isDurable || isWorkflow || isContainer) {
+        if (isWorkflow) hasWorkflow = true;
+        if (isContainer) hasContainer = true;
+
+        const variableDeclarator = ancestors.findLast((a: any) => a.type === "VariableDeclarator");
+        const variableDeclaration = ancestors.findLast((a: any) => a.type === "VariableDeclaration");
+        const exportNamedDeclaration = ancestors.findLast((a: any) => a.type === "ExportNamedDeclaration");
+
+        if (variableDeclarator) {
+          const name = variableDeclarator.id.name;
+          // OXC spans use .start and .end
+          const arg = node.arguments[0];
+          const aSpan = arg.span || {};
+          const aStart = arg.start ?? aSpan.start;
+          const aEnd = arg.end ?? aSpan.end;
+          
+          const options = source.slice(aStart, aEnd);
+          const isExported = !!exportNamedDeclaration;
+
+          let replacement = "";
+          if (isDurable) {
+            replacement = `class ${name} {
   constructor(state, env) {
     this.state = state;
     this.env = env;
+    this.$$handler = ${options};
   }
   async fetch(request) {
-    const $$handler = ${options.trim()};
-    if (typeof $$handler === "function") return $$handler(request, this.state, this.env);
-    if ($$handler.fetch) return $$handler.fetch(request, this.state, this.env);
+    if (typeof this.$$handler === "function") return this.$$handler(request, this.state, this.env);
+    if (this.$$handler.fetch) return this.$$handler.fetch(request, this.state, this.env);
     return new Response("Not Found", { status: 404 });
   }
-}
-`;
-    // Replace the call and optional trailing semicolon
-    let endIndex = closingParenIndex + 1;
-    if (transformed[endIndex] === ";") endIndex++;
-
-    transformed = transformed.slice(0, matchIndex) + replacement + transformed.slice(endIndex);
+  // WebSocket 2.0: Bun-native Pub/Sub API for Durable Objects
+  $$wrapWS(ws) {
+    const self = this;
+    return new Proxy(ws, {
+      get(target, prop) {
+        if (prop === "subscribe") return (topic) => self.state.acceptWebSocket(target, [topic]);
+        if (prop === "unsubscribe") return (topic) => { /* Cloudflare auto-manages tags, but we could add manual removal if needed */ };
+        if (prop === "publish") return (topic, data) => self.publish(topic, data, target);
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
   }
-
-  return transformed;
-}
-
-/**
- * Transforms workflow({ ... }) calls into Cloudflare Workflow classes.
- */
-export function transformWorkflows(source: string): string {
-  if (!source.includes("workflow")) {
-    return source;
+  publish(topic, data, exclude) {
+    const sockets = this.state.getWebSockets(topic);
+    for (const s of sockets) {
+      if (s !== exclude) s.send(data);
+    }
   }
-
-  let transformed = source;
-
-  // 1. Remove ONLY 'workflow' from the buncf import list, preserving others
-  transformed = transformed.replace(/import\s+\{([^}]*)\bworkflow\b([^}]*)\}\s+from\s+['"]buncf['"];?/g, (match, before, after) => {
-    const combined = (before + after).trim();
-    if (!combined || combined === ",") return "";
-    const cleaned = combined
-      .replace(/,\s*,/g, ",")
-      .replace(/^,|,$/g, "")
-      .trim();
-    if (!cleaned) return "";
-    return `import { ${cleaned} } from "buncf";`;
-  });
-
-  // 2. Inject WorkflowEntrypoint import if workflows are used
-  if (transformed.match(/\bworkflow\s*\(/) && !transformed.includes('from "cloudflare:workers"')) {
-    transformed = `import { WorkflowEntrypoint } from "cloudflare:workers";\n` + transformed;
+  async webSocketMessage(ws, message) {
+    if (this.$$handler.webSocketMessage) return await this.$$handler.webSocketMessage.call(this, this.$$wrapWS(ws), message);
   }
-
-  // Find all [export] const Name = workflow(
-  const matches = [...transformed.matchAll(/\b(?:export\s+)?(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*workflow\s*\(/g)];
-
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const match = matches[i];
-    if (!match || match.index === undefined) continue;
-
-    const matchIndex = match.index;
-    const fullMatch = match[0];
-    const name = match[1];
-    const isExported = fullMatch.startsWith("export");
-
-    const openParenIndex = matchIndex + fullMatch.length - 1;
-    const closingParenIndex = findBalancedParen(transformed, openParenIndex);
-
-    if (closingParenIndex === -1) continue;
-
-    const options = transformed.slice(openParenIndex + 1, closingParenIndex);
-
-    const replacement = `
-${isExported ? "export " : ""}class ${name} extends WorkflowEntrypoint {
+  async webSocketClose(ws, code, reason, wasClean) {
+    if (this.$$handler.webSocketClose) return await this.$$handler.webSocketClose.call(this, this.$$wrapWS(ws), code, reason, wasClean);
+  }
+  async webSocketError(ws, error) {
+    if (this.$$handler.webSocketError) return await this.$$handler.webSocketError.call(this, this.$$wrapWS(ws), error);
+  }
+}`;
+          } else if (isWorkflow) {
+            replacement = `class ${name} extends WorkflowEntrypoint {
   async run(event, step) {
-    const $$impl = ${options.trim()};
+    const $$impl = ${options};
     if (typeof $$impl.run === "function") {
       return await $$impl.run(event, step, this.env);
     }
   }
-}
-`;
-    let endIndex = closingParenIndex + 1;
-    if (transformed[endIndex] === ";") endIndex++;
-
-    transformed = transformed.slice(0, matchIndex) + replacement + transformed.slice(endIndex);
-  }
-
-  return transformed;
-}
-
-/**
- * Transforms container({ ... }) calls into Cloudflare Container classes.
- */
-export function transformContainers(source: string): string {
-  if (!source.includes("container")) {
-    return source;
-  }
-
-  let transformed = source;
-
-  // 1. Remove ONLY 'container' from the buncf import list, preserving others
-  transformed = transformed.replace(/import\s+\{([^}]*)\bcontainer\b([^}]*)\}\s+from\s+['"]buncf['"];?/g, (match, before, after) => {
-    const combined = (before + after).trim();
-    if (!combined || combined === ",") return "";
-    const cleaned = combined
-      .replace(/,\s*,/g, ",")
-      .replace(/^,|,$/g, "")
-      .trim();
-    if (!cleaned) return "";
-    return `import { ${cleaned} } from "buncf";`;
-  });
-
-  // 2. Inject Container import if containers are used
-  if (transformed.match(/\bcontainer\s*\(/) && !transformed.includes('from "@cloudflare/containers"')) {
-    transformed = `import { Container } from "@cloudflare/containers";\n` + transformed;
-  }
-
-  // Find all [export] const Name = container(
-  const matches = [...transformed.matchAll(/\b(?:export\s+)?(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*container\s*\(/g)];
-
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const match = matches[i];
-    if (!match || match.index === undefined) continue;
-
-    const matchIndex = match.index;
-    const fullMatch = match[0];
-    const name = match[1];
-    const isExported = fullMatch.startsWith("export");
-
-    const openParenIndex = matchIndex + fullMatch.length - 1;
-    const closingParenIndex = findBalancedParen(transformed, openParenIndex);
-
-    if (closingParenIndex === -1) continue;
-
-    const options = transformed.slice(openParenIndex + 1, closingParenIndex);
-
-    const replacement = `
-${isExported ? "export " : ""}class ${name} extends Container {
+}`;
+          } else if (isContainer) {
+            replacement = `class ${name} extends Container {
   defaultPort = 8080;
   sleepAfter = "10m";
   envVars = {};
 
   constructor(state, env) {
     super(state, env);
-    const $$opts = ${options.trim()};
+    const $$opts = ${options};
     this.$$impl = $$opts;
     if ($$opts.defaultPort) this.defaultPort = $$opts.defaultPort;
     if ($$opts.sleepAfter) this.sleepAfter = $$opts.sleepAfter;
@@ -226,83 +272,74 @@ ${isExported ? "export " : ""}class ${name} extends Container {
       return await this.$$impl.onError.call(this, error);
     }
   }
-}
-`;
-    let endIndex = closingParenIndex + 1;
-    if (transformed[endIndex] === ";") endIndex++;
+}`;
+          }
 
-    transformed = transformed.slice(0, matchIndex) + replacement + transformed.slice(endIndex);
-  }
+          const targetNode = exportNamedDeclaration || variableDeclaration;
+          if (targetNode) {
+            const tSpan = targetNode.span || {};
+            const tStart = targetNode.start ?? tSpan.start;
+            const tEnd = targetNode.end ?? tSpan.end;
+            if (targetNode.handled) {
+                s.appendRight(tEnd, "\n" + (isExported ? "export " : "") + replacement);
+            } else {
+                s.overwrite(tStart, tEnd, (isExported ? "export " : "") + replacement);
+                targetNode.handled = true;
+            }
+          }
+        }
+      }
 
-  return transformed;
-}
+      // -- Serve --
+      const isServe = calleeName === (bunImports.get("serve") || "serve");
+      if (isServe) {
+        const exportDefaultDeclaration = ancestors.findLast((a: any) => a.type === "ExportDefaultDeclaration");
+        const variableDeclarator = ancestors.findLast((a: any) => a.type === "VariableDeclarator");
+        const variableDeclaration = ancestors.findLast((a: any) => a.type === "VariableDeclaration");
 
-/**
- * Transforms Bun.serve() calls to Cloudflare Worker export default { fetch }.
- */
-export function transformServe(source: string): string {
-  // First, apply transformations
-  let transformed = transformDurables(source);
-  transformed = transformWorkflows(transformed);
-  transformed = transformContainers(transformed);
+        const arg = node.arguments[0];
+        const aSpan = arg.span || {};
+        const aStart = arg.start ?? aSpan.start;
+        const aEnd = arg.end ?? aSpan.end;
+        
+        let options = source.slice(aStart, aEnd);
 
-  if (!transformed.includes("serve")) {
-    return transformed;
-  }
+        // --- AGGRESSIVE SPLITTING: Wrap route handlers in dynamic imports ---
+        if (arg.type === "ObjectExpression") {
+          const routesProp = arg.properties.find((p: any) => p.key?.name === "routes" || p.key?.value === "routes");
+          if (routesProp && routesProp.value.type === "ObjectExpression") {
+            const routesS = new MagicString(options);
+            const routesOffset = aStart;
 
-  // 1. Remove ONLY 'serve' from the bun import list, preserving others
-  transformed = transformed.replace(/import\s+\{([^}]*)\bserve\b([^}]*)\}\s+from\s+['"]bun['"];?/g, (match, before, after) => {
-    const combined = (before + after).trim();
-    if (!combined || combined === ",") return "";
-    // Clean up commas: ", ," -> ", " and remove leading/trailing commas
-    const cleaned = combined
-      .replace(/,\s*,/g, ",")
-      .replace(/^,|,$/g, "")
-      .trim();
-    if (!cleaned) return "";
-    return `import { ${cleaned} } from "bun";`;
-  });
+            routesProp.value.properties.forEach((prop: any) => {
+              const pSpan = prop.value.span || {};
+              const pStart = (prop.value.start ?? pSpan.start) - routesOffset;
+              const pEnd = (prop.value.end ?? pSpan.end) - routesOffset;
 
-  if (!transformed.includes('import { setBuncfContext } from "buncf"')) {
-    transformed = `import { setBuncfContext } from "buncf";\n` + transformed;
-  }
+              if (prop.value.type === "Identifier") {
+                const handlerName = prop.value.name;
+                const imp = allImports.get(handlerName);
+                if (imp && imp.imported !== "*") {
+                  routesS.overwrite(pStart, pEnd, `async (req, srv, ctx) => (await import("${imp.source}")).${imp.imported}(req, srv, ctx)`);
+                }
+              } else if (prop.value.type === "MemberExpression") {
+                // Support H.Home where H is a namespace import
+                const objectName = prop.value.object?.name;
+                const propertyName = prop.value.property?.name || prop.value.property?.value;
+                const imp = allImports.get(objectName);
+                if (imp && imp.imported === "*") {
+                  routesS.overwrite(pStart, pEnd, `async (req, srv, ctx) => (await import("${imp.source}")).${propertyName}(req, srv, ctx)`);
+                }
+              }
+            });
+            options = routesS.toString();
+          }
+        }
 
-  // Find all Bun.serve or serve calls
-  const matches = [...transformed.matchAll(/\b(?:Bun\.)?serve\s*\(/g)];
+        let serverVarName = variableDeclarator?.id?.name || "";
 
-  // We process from bottom to top to avoid index shifts
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const match = matches[i];
-    const matchIndex = match?.index;
-    if (matchIndex === undefined || matchIndex === null) continue;
-
-    const matchedText = match?.[0];
-    if (!matchedText) continue;
-
-    // Check if this serve call is part of an assignment or export:
-    // "const server = serve(" or "export default serve("
-    const beforeMatch = transformed.slice(0, matchIndex);
-    const assignmentMatch = beforeMatch.match(/(?:(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=|export\s+default)\s*$/);
-
-    let startIndex = matchIndex;
-    if (assignmentMatch) {
-      startIndex = matchIndex - assignmentMatch[0].length;
-    }
-
-    const openParenIndex = matchedText.length + matchIndex - 1;
-    const closingParenIndex = findBalancedParen(transformed, openParenIndex);
-
-    if (closingParenIndex === -1) continue;
-
-    const options = transformed.slice(openParenIndex + 1, closingParenIndex);
-
-    let serverVarName = "";
-    if (assignmentMatch && assignmentMatch[1]) {
-      serverVarName = assignmentMatch[1]; // Get the variable name if it was "const name = ..."
-    }
-
-    const replacement = `
-const $$options = ${options.trim()};
+        const replacement = `
+const $$options = ${options};
 const $$routes = $$options.routes ? Object.entries($$options.routes).sort(([a], [b]) => {
   const getScore = (s) => {
     if (s.includes("*")) return 1;
@@ -314,7 +351,6 @@ const $$routes = $$options.routes ? Object.entries($$options.routes).sort(([a], 
   if (scoreA !== scoreB) return scoreB - scoreA;
   return b.length - a.length;
 }).map(([path, handler]) => {
-  // Convert Bun-style wildcard (*) to URLPattern-style (:any*)
   const patternPath = path.replace(/\\*$/, ":any*");
   return {
     pattern: new URLPattern({ pathname: patternPath }),
@@ -330,7 +366,7 @@ const $$server = {
     const [client, server] = new WebSocketPair();
     const ws = {
       data: options.data || {},
-      readyState: 1, // Open
+      readyState: 1,
       send: (msg) => server.send(msg),
       close: (code, reason) => server.close(code, reason),
       subscribe: (topic) => {
@@ -352,16 +388,13 @@ const $$server = {
 
     server.accept();
     if ($$options.websocket?.open) $$options.websocket.open(ws);
-    
     server.addEventListener("message", (e) => {
       if ($$options.websocket?.message) $$options.websocket.message(ws, e.data);
     });
-    
     server.addEventListener("close", (e) => {
       for (const subs of $$topics.values()) subs.delete(server);
       if ($$options.websocket?.close) $$options.websocket.close(ws, e.code, e.reason);
     });
-
     server.addEventListener("error", (e) => {
       if ($$options.websocket?.error) $$options.websocket.error(ws, e.error || e);
     });
@@ -384,16 +417,13 @@ const $$server = {
 const $$worker = {
   async fetch(request, env, ctx) {
     const { setBuncfContext } = await import("buncf");
-    
     setBuncfContext({ 
       env: env || {}, 
       cf: request.cf || {}, 
       ctx: ctx || { waitUntil: () => {}, passThroughOnException: () => {} }
     });
-
     globalThis.$$upgradeResponse = null;
 
-    // 1. Try to serve from ASSETS binding if it exists
     if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
       const assetResponse = await env.ASSETS.fetch(request.clone());
       if (assetResponse.status !== 404) return assetResponse;
@@ -401,33 +431,28 @@ const $$worker = {
 
     if ($$routes.length > 0) {
       const url = new URL(request.url);
-
       for (const { pattern, handler } of $$routes) {
         const match = pattern.exec(url);
-        
         if (match) {
           const params = match.pathname.groups;
           const requestWithParams = new Proxy(request, {
             get(target, prop) {
               if (prop === "params") return params;
+              if (prop === "_rawRequest") return target;
               const value = Reflect.get(target, prop);
               return typeof value === "function" ? value.bind(target) : value;
             }
           });
-
           let result;
           if (handler instanceof Response || typeof handler === "string") {
             result = typeof handler === "string" ? new Response(handler, { headers: { "Content-Type": "text/html" } }) : handler;
           } else if (typeof handler === "object") {
             const method = request.method.toUpperCase();
             const methodHandler = handler[method];
-            if (methodHandler) {
-              result = await methodHandler(requestWithParams, $$server, ctx);
-            }
+            if (methodHandler) result = await methodHandler(requestWithParams, $$server, ctx);
           } else if (typeof handler === "function") {
             result = await handler(requestWithParams, $$server, ctx);
           }
-
           if (globalThis.$$upgradeResponse) return globalThis.$$upgradeResponse;
           if (result) return result;
         }
@@ -439,13 +464,10 @@ const $$worker = {
       if (globalThis.$$upgradeResponse) return globalThis.$$upgradeResponse;
       if (result) return result;
     }
-    
     return new Response("Not Found", { status: 404 });
   }
 };
 
-// Exporting the full options as default allows Bun to start the server automatically
-// with all original settings (port, etc.) while also working as a Cloudflare Worker.
 ${serverVarName ? `const ${serverVarName} = { 
   ...$$server,
   url: new URL("http://localhost"), 
@@ -457,15 +479,29 @@ ${serverVarName ? `const ${serverVarName} = {
 export default {
   ...$$options,
   fetch: $$worker.fetch
-};
-`;
+};`;
 
-    // Replace the call and optional trailing semicolon
-    let endIndex = closingParenIndex + 1;
-    if (transformed[endIndex] === ";") endIndex++;
+        const targetNode = exportDefaultDeclaration || variableDeclaration || node;
+        const tSpan = targetNode.span || {};
+        const tStart = targetNode.start ?? tSpan.start;
+        const tEnd = targetNode.end ?? tSpan.end;
+        if (tStart !== undefined && tEnd !== undefined) {
+            s.overwrite(tStart, tEnd, replacement);
+        }
+      }
+    }
+  });
 
-    transformed = transformed.slice(0, startIndex) + replacement + transformed.slice(endIndex);
-  }
+  // Prefixes
+  let prefix = `import { setBuncfContext } from "buncf";\n`;
+  if (hasWorkflow) prefix += `import { WorkflowEntrypoint } from "cloudflare:workers";\n`;
+  if (hasContainer) prefix += `import { Container } from "@cloudflare/containers";\n`;
 
-  return transformed;
+  return prefix + s.toString();
 }
+
+// Compatibility exports
+export function transformDurables(source: string) { return transformSource(source); }
+export function transformWorkflows(source: string) { return transformSource(source); }
+export function transformContainers(source: string) { return transformSource(source); }
+export function transformServe(source: string) { return transformSource(source); }

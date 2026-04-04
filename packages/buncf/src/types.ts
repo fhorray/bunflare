@@ -68,6 +68,29 @@ declare global {
   interface CloudflareBindings {
     [key: string]: any;
   }
+
+  interface WebSocket {
+    serialize?: () => any;
+    subscribe(topic: string): void;
+    unsubscribe(topic: string): void;
+    publish(topic: string, data: string | ArrayBuffer | Uint8Array): void;
+  }
+
+  interface Request {
+    params: { [key: string]: string } & { [key: string]: any };
+    _rawRequest?: Request;
+  }
+}
+
+declare module "bun" {
+  /**
+   * Type-safe augmentation for Bun.serve when used with buncf.
+   */
+  export function serve<T extends { 
+    routes?: Record<string, (req: Request) => any>; 
+    fetch?: (req: Request, srv?: any) => any;
+    [key: string]: any;
+  }>(options: T): T;
 }
 
 /**
@@ -154,6 +177,11 @@ export interface BuncfConfig {
    */
   staticAssets?: "binding" | "html-loader";
 
+  /**
+   * Status of serving static assets from this directory.
+   * "public/" is the default if not specified.
+   */
+  staticDir?: string;
   /** Native Bun plugins to run during the build process. */
   plugins?: BunPlugin[];
   /** Custom loaders for specific file extensions. */

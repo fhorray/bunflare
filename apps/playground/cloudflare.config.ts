@@ -5,6 +5,7 @@ export default defineConfig({
   workerName: "playground-worker",
   entrypoint: "./src/index.ts",
   outdir: "./dist",
+  staticDir: "web",
   target: "browser",
   minify: true,
   sourcemap: "linked",

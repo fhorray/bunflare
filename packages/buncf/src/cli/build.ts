@@ -44,11 +44,12 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
     format: "esm",
     naming: {
       entry: "[name].[ext]", // Ensures src/index.ts -> dist/index.js
+      chunk: "[name]-[hash].[ext]",
     },
     minify: config.minify ?? (isProd ? true : false),
     sourcemap: config.sourcemap ?? (isProd ? "none" : "linked"),
     external: [...(config.external ?? []), "wrangler", "cloudflare:workers", "cloudflare:email", "@cloudflare/containers"],
-    splitting: config.splitting ?? false,
+    splitting: config.splitting ?? true, // Enabled by default now
     define: {
       "process.env.NODE_ENV": JSON.stringify(isProd ? "production" : "development"),
       "__BUILD_TIME__": JSON.stringify(new Date().toISOString()),
@@ -90,6 +91,7 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
       },
       publicPath: "/assets/", // Absolute path to the assets folder
       minify: true,
+      splitting: config.splitting ?? true,
       metafile: true,
       plugins: config.plugins || [], 
       loader: config.loader,
@@ -115,17 +117,45 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
     }
   }
 
+  // --- NEW: Copy Static Directory (public) ---
+  const staticDirName = config.staticDir || "public";
+  const staticPath = path.resolve(rootDir, staticDirName);
+  let staticAssetsCount = 0;
+  if (existsSync(staticPath)) {
+    const { cpSync } = await import("node:fs");
+    try {
+      cpSync(staticPath, path.resolve(rootDir, outdir), { recursive: true });
+      staticAssetsCount = 1; // Mark as having static assets
+    } catch (e) {
+      console.warn(`[buncf] ⚠️ Warning: Failed to copy static directory ${staticDirName}:`, e);
+    }
+  }
+
   // Combine metafiles for report
   const mergedOutputs = { ...workerResult.metafile!.outputs, ...frontendResult.metafile!.outputs };
 
   console.log("\n[buncf] 📊 Bundle Report:");
-  for (const [path, meta] of Object.entries(mergedOutputs) as [string, any][]) {
+  let totalBytes = 0;
+  for (const [outPath, meta] of Object.entries(mergedOutputs) as [string, any][]) {
+    const relPath = path.relative(rootDir, outPath);
+    totalBytes += meta.bytes;
     const sizeKb = (meta.bytes / 1024).toFixed(2);
-    console.log(`  ${path.replace(process.cwd() + "/", "")} ${sizeKb} KB`);
+    const typeIndicator = (relPath.includes("/chunk-") || relPath.includes("-hash")) ? "  🧩" : "  📄";
+    console.log(`${typeIndicator} ${relPath} ${sizeKb} KB`);
   }
-  console.log("");
+  
+  if (staticAssetsCount > 0) {
+    console.log(`  📁 ${staticDirName}/ (Static Assets Copied)`);
+  }
+
+  const totalKb = (totalBytes / 1024).toFixed(2);
+  console.log(`  ────────────────────────────────`);
+  console.log(`  📦 TOTAL SIZE: ${totalKb} KB\n`);
 
   console.log("[buncf] ✨ Build successful!");
+  if (staticAssetsCount > 0 || entrypoints.html.length > 0) {
+    console.log(`[buncf] 💡 Hint: Ensure "assets": { "directory": "./${path.basename(outdir)}" } is set in your wrangler.jsonc for CDN delivery.`);
+  }
 }
 
 // If run directly

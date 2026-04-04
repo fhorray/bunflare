@@ -25,7 +25,7 @@ bun add -d buncf
 
 ```typescript
 // src/index.ts — write standard Cloudflare-ready code
-import { serve } from 'bun';
+import { serve } from 'buncf';
 import { getCloudflareContext } from 'buncf';
 
 serve({
@@ -91,7 +91,7 @@ Serve a React (or any HTML) frontend directly from your Worker:
 
 ```typescript
 // src/index.ts
-import { serve } from "bun";
+import { serve } from "buncf";
 import index from "./index.html"; // Bun's native HTML import
 
 serve({
@@ -161,7 +161,6 @@ When developing multiple Workers in the same monorepo, use the standardized `bun
 | App | Main Port | Inspector Port |
 | :--- | :--- | :--- |
 | **Hono** | `3101` | `9201` |
-| **Elysia** | `3102` | `9202` |
 | **Bun** | `3103` | `9203` |
 | **Itty** | `3105` | `9205` |
 
@@ -210,7 +209,7 @@ await env.BUCKET.put('hello.txt', 'world');
 
 ---
 
-## ⚡ Using Frameworks (Hono, Elysia, etc.)
+## ⚡ Using Frameworks (Hono, etc.)
 
 `buncf` is compatible with any framework that supports the Fetch API and Bun's `serve`.
 

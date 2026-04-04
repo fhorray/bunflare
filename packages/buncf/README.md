@@ -24,7 +24,7 @@ bun add -d buncf
 
 ```typescript
 // src/index.ts — write standard Cloudflare-ready code
-import { serve } from 'bun';
+import { serve } from 'buncf';
 import { getCloudflareContext } from 'buncf';
 
 serve({
@@ -90,7 +90,7 @@ Serve a React (or any HTML) frontend directly from your Worker:
 
 ```typescript
 // src/index.ts
-import { serve } from "bun";
+import { serve } from "buncf";
 import index from "./index.html"; // Bun's native HTML import
 
 serve({

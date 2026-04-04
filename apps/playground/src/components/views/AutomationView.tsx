@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -37,6 +37,20 @@ export function AutomationView() {
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [history, setHistory] = useState<WorkflowHistoryItem[]>([]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch('/api/workflow/history');
+      const data = await res.json() as { history: WorkflowHistoryItem[] };
+      if (data.history) setHistory(data.history);
+    } catch (e) {
+      console.error("Failed to fetch workflow history:", e);
+    }
+  };
 
   // Trigger the actual workflow via backend API
   const triggerWorkflow = async () => {

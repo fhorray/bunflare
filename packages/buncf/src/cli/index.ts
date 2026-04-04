@@ -20,6 +20,12 @@ async function main() {
       break;
     }
 
+    case "doctor": {
+      const { runDoctor } = await import("./doctor");
+      await runDoctor();
+      break;
+    }
+
     case "help":
     case "--help":
     case "-h":
@@ -34,6 +40,7 @@ async function main() {
     init                🚀 Inicializa a configuração do projeto (wrangler.jsonc + config).
     build              📦 Transpila e bundla seu worker para produção.
     build --production 🚀 Build otimizado (minify + drop console + sem sourcemaps).
+    doctor             🩺 Verifica a saúde e configuração do projeto.
     help               ❓ Exibe esta mensagem de ajuda.
 
   Configuração:

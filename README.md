@@ -24,8 +24,7 @@ bun add -d buncf
 
 ```typescript
 // src/index.ts — write standard Cloudflare-ready code
-import { serve } from 'bun';
-import { getCloudflareContext } from 'buncf';
+import { serve, getCloudflareContext } from 'buncf';
 
 serve({
   routes: {
@@ -58,11 +57,37 @@ serve({
 wrangler dev
 ```
 
-**Deploy to Cloudflare:**
-
 ```bash
 bunx buncf build && wrangler deploy
 ```
+
+**Check project health & bindings:**
+
+```bash
+bunx buncf doctor
+```
+
+---
+
+## 📦 Worker Assets (Static Files)
+
+`buncf` automatically detects your `public/` directory and includes its contents in the build. These are served directly by Cloudflare's global CDN for maximum performance.
+
+1. Create a `public/` folder in your project root.
+2. Add your `images`, `css`, or `js` files.
+3. Configure your `wrangler.jsonc` to point to the build output:
+
+```jsonc
+{
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  }
+}
+```
+
+> [!TIP]
+> Requests for static files hit the CDN first and **never consume your Worker invocation quota** when properly configured.
 
 ---
 
@@ -91,7 +116,7 @@ Serve a React (or any HTML) frontend directly from your Worker:
 
 ```typescript
 // src/index.ts
-import { serve } from "bun";
+import { serve } from "buncf";
 import index from "./index.html"; // Bun's native HTML import
 
 serve({
@@ -161,7 +186,6 @@ When developing multiple Workers in the same monorepo, use the standardized `bun
 | App | Main Port | Inspector Port |
 | :--- | :--- | :--- |
 | **Hono** | `3101` | `9201` |
-| **Elysia** | `3102` | `9202` |
 | **Bun** | `3103` | `9203` |
 | **Itty** | `3105` | `9205` |
 
@@ -196,27 +220,20 @@ bun run cf-typegen
 
 ### 2. Automatic Intelligence
 
-Once generated, `getCloudflareContext()` will automatically identify your bindings without any extra configuration or manual generics:
+Once generated, `getCloudflareContext()` will automatically identify your bindings without any extra configuration or manual generics.
 
-```ts
-import { getCloudflareContext } from 'buncf/runtime';
-
-const { env } = getCloudflareContext();
-
-// Now you have full IntelliSense!
-await env.DB.prepare('SELECT * FROM users').all();
-await env.BUCKET.put('hello.txt', 'world');
-```
+> [!TIP]
+> **Zero-Config Type Safety**: `buncf` extends the global `Request` and `WebSocket` interfaces. By using `import { serve } from "buncf"`, you get full IntelliSense for `req.params`, `ws.subscribe()`, and even `.html` imports without any extra `.d.ts` files.
 
 ---
 
-## ⚡ Using Frameworks (Hono, Elysia, etc.)
+## ⚡ Using Frameworks (Hono, etc.)
 
 `buncf` is compatible with any framework that supports the Fetch API and Bun's `serve`.
 
 ```typescript
 import { Hono } from 'hono';
-import { serve } from 'bun';
+import { serve } from 'buncf';
 
 // Define your bindings for full type safety
 const app = new Hono<{ Bindings: CloudflareBindings }>();
@@ -230,25 +247,6 @@ app.get('/api/hello', (c) => {
 
 // CRITICAL: Use a lazy closure for Cloudflare stability
 export default serve({
-  // @ts-ignore
-  fetch: (req, env, ctx) => app.fetch(req, env, ctx),
-});
-```
-
-### 2. Elysia
-
-[Elysia](https://elysiajs.com/) requires specific settings to run in the Cloudflare security sandbox:
-
-```typescript
-import { Elysia } from 'elysia';
-import { serve } from 'bun';
-
-// Set aot: false to avoid forbidden string code generation
-const app = new Elysia({ aot: false })
-  .get('/', () => 'Hello from Elysia');
-
-export default serve({
-  // @ts-ignore
   fetch: (req, env, ctx) => app.fetch(req, env, ctx),
 });
 ```
@@ -280,8 +278,6 @@ export const MyProcess = workflow({
 });
 ```
 
----
-
 ## 💎 Durable Objects (`durable()`)
 
 Define persistent state with a clean, functional wrapper:
@@ -290,10 +286,58 @@ Define persistent state with a clean, functional wrapper:
 import { durable } from "buncf";
 
 export const Counter = durable({
-  async fetch(request, state: DurableObjectState, env: CloudflareBindings) {
+  async fetch(request, state: DurableObjectState) {
     let count = (await state.storage.get<number>("count")) || 0;
     await state.storage.put("count", ++count);
     return Response.json({ count });
+  }
+});
+```
+
+### 📡 WebSocket 2.0: Bun-Native Pub/Sub
+
+`buncf` brings Bun's powerful publish-subscribe API directly into Durable Objects. You don't need to manually manage arrays of sockets; just use the native methods you already know.
+
+```typescript
+export const ChatHub = durable({
+  async fetch(request, state) {
+    const pair = new WebSocketPair();
+    // No need for ws.accept() if using hibernatable API
+    state.acceptWebSocket(pair[1], ["chat"]);
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  },
+
+  async webSocketMessage(ws, message) {
+    // 1. Subscribe to topics
+    ws.subscribe("chat-room-1");
+
+    // 2. Publish to others (excludes sender)
+    ws.publish("chat-room-1", `User says: ${message}`);
+
+    // 3. Broadcast to all (includes sender)
+    this.publish("chat-room-1", "A new message arrived!");
+  }
+});
+```
+
+> [!IMPORTANT]
+> **Stateful WebSockets**: If your application needs to coordinate between multiple clients (like a Chat Hub), you **must** use a Durable Object. Standard Workers are stateless and don't share WebSocket state across isolates.
+
+---
+
+## 📦 Cloudflare Containers (`container()`)
+
+Run code written in any language (Go, Rust, Python) alongside your Bun app:
+
+```typescript
+import { container } from "buncf";
+
+export const ImageProcessor = container({
+  image: "./Dockerfile",    // path to your Dockerfile
+  defaultPort: 8080,         // container listening port
+  sleepAfter: "10m",         // auto-stop after idle
+  envVars: {
+    MODE: "hi-res"
   }
 });
 ```
@@ -316,11 +360,31 @@ const { env, cf, ctx } = getCloudflareContext();
 
 ---
 
+## 🚀 Advanced Cold Start Optimization (Lazy Routing)
+
+`buncf` uses **Aggressive Code Splitting** to ensure your Worker starts instantly, even with large dependencies. 
+
+When you import a route handler from an external file, `buncf` automatically transforms it into a **dynamic import**, creating separate chunks that are only loaded when the route is actually accessed.
+
+```ts
+import { HeavyHandler } from "./handlers/heavy";
+
+serve({
+  routes: {
+    "/heavy": HeavyHandler // Automatically wrapped in await import("./handlers/heavy")
+  }
+});
+```
+
+---
+
 ## 🤔 How does it work?
 
-1. **Build Phase**: `Bun.build()` transforms your `Bun.serve` and `Bun.env` calls into standard Cloudflare Worker exports.
-2. **Context Injection**: `buncf` manages the injection of the Cloudflare context (`env`, `cf`, `ctx`) into your app lifecycle.
-3. **No Shims**: We prioritize native bindings to ensure your code is "Worker-native" from day one.
+1. **AST Transformation**: `buncf` uses a high-performance **OXC-powered AST engine** (Rust) to surgically transform your code. It handles TypeScript and JSX natively with character-perfect precision.
+2. **Lazy Wrappers**: `Bun.serve`, `durable()`, and `workflow()` calls are transformed into standard Cloudflare classes and exports.
+3. **Context Injection**: `buncf` manages the injection of the Cloudflare context (`env`, `cf`, `ctx`) into your app lifecycle.
+4. **Bundle Transparency**: The build CLI provides a **Total Bundle Size** report (including chunks and assets) to ensure you stay within Cloudflare's limits.
+5. **No Shims**: We prioritize native bindings to ensure your code is "Worker-native" from day one.
 
 ---
 
