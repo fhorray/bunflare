@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "jsxFactory": null,
+    "jsxFragmentFactory": null,
+    "types": ["bun"]
+  }
+}

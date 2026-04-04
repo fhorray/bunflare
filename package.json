@@ -13,7 +13,8 @@
     "build": "turbo build",
     "test": "turbo test",
     "check-types": "tsc --noEmit",
-    "publish": "bun run scripts/publish.ts"
+    "publish": "bun run scripts/publish.ts",
+    "dev:cf": "turbo dev:cf"
   },
   "devDependencies": {
     "@clack/prompts": "^1.2.0",

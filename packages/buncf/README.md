@@ -8,9 +8,11 @@
 
 - **Cloudflare-Native Priority**: Use standard Cloudflare `env` bindings (`env.BUCKET`, `env.DB`, `env.KV`) directly. No complex abstractions.
 - **Bun Performance**: Run your build pipeline with Bun's lightning-fast runtime.
+- **Smart Entry Detection**: Automatically finds your `src/index.tsx`, `src/index.ts`, or `.js/jsx` without manual configuration.
 - **Automatic Transitions**: `Bun.serve` and `Bun.env` are automatically transformed into Worker exports and environment variables.
 - **Full-Stack Support**: Serve React/HTML frontends directly from your Worker with zero extra config.
 - **Wrangler Integration**: Works seamlessly with official `wrangler dev` for high-fidelity simulation.
+- **Stabilized Runtime**: Built-in protection against Cloudflare's "Global Scope" and "EvalError" restrictions.
 
 ## 📦 Install
 
@@ -22,7 +24,8 @@ bun add -d buncf
 
 ```typescript
 // src/index.ts — write standard Cloudflare-ready code
-import { serve, getCloudflareContext } from 'buncf';
+import { serve } from 'bun';
+import { getCloudflareContext } from 'buncf';
 
 serve({
   routes: {
@@ -85,7 +88,7 @@ Serve a React (or any HTML) frontend directly from your Worker:
 
 ```typescript
 // src/index.ts
-import { serve } from "buncf";
+import { serve } from "bun";
 import index from "./index.html"; // Bun's native HTML import
 
 serve({
@@ -100,13 +103,27 @@ Configure your build in `buncf.config.ts`:
 
 ```typescript
 import { defineConfig } from 'buncf/config';
-import tailwind from 'bun-plugin-tailwind';
 
 export default defineConfig({
-  entrypoint: './src/index.ts',
-  plugins: [tailwind()], // Frontend plugins (CSS, etc.)
+  // entrypoint: './src/index.ts', // Optional! buncf auto-detects common index files.
+  outdir: './dist',
+  minify: true,
+  sourcemap: 'linked',
 });
 ```
+
+---
+
+## 🏗️ Smart Entry Point Detection
+
+`buncf` features an intelligent build pipeline that eliminates the need for hardcoded entry point paths. If no `entrypoint` is specified in your config, it will automatically search your `src/` directory for:
+
+1. `index.tsx` (Modern React/JSX)
+2. `index.ts` (TypeScript)
+3. `index.jsx` (JavaScript/JSX)
+4. `index.js` (Vanilla JavaScript)
+
+This ensures your project is always build-ready, even after a migration from `.ts` to `.tsx`.
 
 ---
 
@@ -133,6 +150,22 @@ Local development is powered by official **Wrangler**. When you run `wrangler de
 1. High-fidelity simulation of R2, D1, KV, etc.
 2. Local persistence in `.wrangler/state/v3`.
 3. Support for environment variables and secrets.
+
+### Standardized Port Mapping
+
+When developing multiple Workers in the same monorepo, use the standardized `buncf` port range to avoid conflicts:
+
+| App | Main Port | Inspector Port |
+| :--- | :--- | :--- |
+| **Hono** | `3101` | `9201` |
+| **Elysia** | `3102` | `9202` |
+| **Bun** | `3103` | `9203` |
+| **Itty** | `3105` | `9205` |
+
+**Example:**
+```bash
+wrangler dev --port 3101 --inspector-port 9201
+```
 
 ---
 
@@ -171,6 +204,54 @@ const { env } = getCloudflareContext();
 await env.DB.prepare('SELECT * FROM users').all();
 await env.BUCKET.put('hello.txt', 'world');
 ```
+
+---
+
+## ⚡ Using Frameworks (Hono, Elysia, etc.)
+
+`buncf` is compatible with any framework that supports the Fetch API and Bun's `serve`.
+
+```typescript
+import { Hono } from 'hono';
+import { serve } from 'bun';
+
+// Define your bindings for full type safety
+const app = new Hono<{ Bindings: CloudflareBindings }>();
+
+app.get('/api/hello', (c) => {
+  return c.json({
+    message: 'Hello from Hono!',
+    appName: c.env.APP_NAME,
+  });
+});
+
+// CRITICAL: Use a lazy closure for Cloudflare stability
+export default serve({
+  // @ts-ignore
+  fetch: (req, env, ctx) => app.fetch(req, env, ctx),
+});
+```
+
+### 2. Elysia
+
+[Elysia](https://elysiajs.com/) requires specific settings to run in the Cloudflare security sandbox:
+
+```typescript
+import { Elysia } from 'elysia';
+import { serve } from 'bun';
+
+// Set aot: false to avoid forbidden string code generation
+const app = new Elysia({ aot: false })
+  .get('/', () => 'Hello from Elysia');
+
+export default serve({
+  // @ts-ignore
+  fetch: (req, env, ctx) => app.fetch(req, env, ctx),
+});
+```
+
+> [!CAUTION]
+> Always use the **Lazy Fetch Wrapper** `fetch: (req, env, ctx) => app.fetch(req, env, ctx)`. This prevents "Disallowed operation called within global scope" errors by deferring framework initialization until the first request.
 
 ---
 

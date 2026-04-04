@@ -10,8 +10,21 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
   const rootDir = options.rootDir || process.cwd();
   const config = await loadConfig(rootDir);
   const isProd = options.production || process.env.NODE_ENV === "production";
+  const { existsSync } = await import("node:fs");
 
-  const entrypoint = config.entrypoint || "./src/index.ts";
+  // Smarter entrypoint detection
+  let entrypoint = config.entrypoint;
+  if (!entrypoint) {
+    const defaultEntries = ["./src/index.ts", "./src/index.tsx", "./src/index.js", "./src/index.jsx"];
+    for (const entry of defaultEntries) {
+      const fullPath = path.resolve(rootDir, entry);
+      if (existsSync(fullPath)) {
+        entrypoint = entry;
+        break;
+      }
+    }
+  }
+  entrypoint = entrypoint || "./src/index.ts"; // Final fallback
   const outdir = config.outdir || "./dist";
   const watchDir = config.watchDir || "src";
 

@@ -33,6 +33,10 @@ export function getCloudflareContext<E = CloudflareBindings>(): CloudflareContex
  */
 export const getBuncfContext = getCloudflareContext;
 /**
+ * @deprecated Use getCloudflareContext instead
+ */
+export const getBunCloudflareContext = getCloudflareContext;
+/**
  * @deprecated Use setCloudflareContext instead
  */
 export const setBuncfContext = setCloudflareContext;

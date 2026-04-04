@@ -1,0 +1,18 @@
+{
+  "name": "example-elysia",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.tsx",
+    "dev:cf": "wrangler dev --port 3102 --inspector-port 9202",
+    "build": "bun --bun run buncf build",
+    "deploy": "bun run build --production && wrangler deploy"
+  },
+  "dependencies": {
+    "@elysiajs/html": "^1.4.0",
+    "buncf": "workspace:*",
+    "elysia": "latest",
+    "wrangler": "latest"
+  }
+}

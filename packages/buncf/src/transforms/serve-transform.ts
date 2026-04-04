@@ -1,4 +1,4 @@
-import { setBuncfContext } from "buncf";
+import { setBuncfContext } from "../runtime/context";
 
 /**
  * Finds the matching closing parenthesis for a Bun.serve( or serve( call.
@@ -46,10 +46,10 @@ export function transformServe(source: string): string {
     const matchedText = match?.[0];
     if (!matchedText) continue;
 
-    // Check if this serve call is part of an assignment like "const server = serve("
-    // We look backwards from matchIndex for "const/let/var name ="
+    // Check if this serve call is part of an assignment or export:
+    // "const server = serve(" or "export default serve("
     const beforeMatch = transformed.slice(0, matchIndex);
-    const assignmentMatch = beforeMatch.match(/(?:const|let|var)\s+[a-zA-Z0-9_$]+\s*=\s*$/);
+    const assignmentMatch = beforeMatch.match(/(?:(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=|export\s+default)\s*$/);
 
     let startIndex = matchIndex;
     if (assignmentMatch) {
@@ -64,9 +64,8 @@ export function transformServe(source: string): string {
     const options = transformed.slice(openParenIndex + 1, closingParenIndex);
 
     let serverVarName = "";
-    if (assignmentMatch) {
-      const parts = assignmentMatch[0].trim().split(/\s+/);
-      serverVarName = parts[1] || ""; // Get the variable name
+    if (assignmentMatch && assignmentMatch[1]) {
+      serverVarName = assignmentMatch[1]; // Get the variable name if it was "const name = ..."
     }
 
     const replacement = `
@@ -112,19 +111,19 @@ const $$worker = {
             const method = request.method.toUpperCase();
             const methodHandler = (handler as any)[method];
             if (methodHandler) {
-              return methodHandler(request);
+              return methodHandler(request, env, ctx);
             }
           }
           
           if (typeof handler === "function") {
-            return handler(request);
+            return handler(request, env, ctx);
           }
         }
       }
     }
 
     if ($$options.fetch) {
-      return $$options.fetch(request);
+      return $$options.fetch(request, env, ctx);
     }
     
     return new Response("Not Found", { status: 404 });

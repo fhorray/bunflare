@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "playground-worker",
+	"name": "example-elysia",
 	"main": "dist/index.js",
 	"compatibility_date": "2026-04-03",
 	"compatibility_flags": [

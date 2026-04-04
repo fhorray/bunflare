@@ -1,0 +1,17 @@
+{
+  "name": "example-itty",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "dev:cf": "wrangler dev --port 3105 --inspector-port 9205",
+    "build": "bun --bun run buncf build",
+    "deploy": "bun run build --production && wrangler deploy"
+  },
+  "dependencies": {
+    "itty-router": "^5.0.18",
+    "buncf": "workspace:*",
+    "wrangler": "latest"
+  }
+}

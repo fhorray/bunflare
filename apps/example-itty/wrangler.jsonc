@@ -1,21 +1,21 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "example-worker",
+	"name": "example-itty",
 	"main": "dist/index.js",
 	"compatibility_date": "2026-04-03",
 	"compatibility_flags": [
-		"nodejs_compat",
+		"nodejs_compat"
 	],
 	"vars": {
-		"APP_NAME": "Example App from Bun Environment"
+		"APP_NAME": "Playground App from Bun Environment"
 	},
 	"assets": {
 		"directory": "./dist",
-		"binding": "ASSETS",
+		"binding": "ASSETS"
 	},
 	"kv_namespaces": [
 		{
-			"binding": "REDIS",
+			"binding": "KV",
 			"id": "4288dcaee2f043c9942d6a785c432803"
 		}
 	],
@@ -33,9 +33,7 @@
 		}
 	],
 	"build": {
-		"command": "bunx --bun buncf build",
+		"command": "bun --bun run buncf build",
 		"watch_dir": "src"
-	},
-	// "dev": {
-	// }
+	}
 }

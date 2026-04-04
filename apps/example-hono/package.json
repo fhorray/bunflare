@@ -1,0 +1,17 @@
+{
+  "name": "example-hono",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.tsx",
+    "dev:cf": "wrangler dev --port 3101 --inspector-port 9201",
+    "build": "bun --bun run buncf build",
+    "deploy": "bun run build --production && wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.12.10",
+    "buncf": "workspace:*",
+    "wrangler": "latest"
+  }
+}

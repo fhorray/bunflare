@@ -1,12 +1,13 @@
 {
-  "name": "bun-react-template",
+  "name": "example-hono",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "bun run --hot src/index.ts",
+    "dev:cf": "wrangler dev --port 3104 --inspector-port 9204",
     "start": "NODE_ENV=production bun src/index.ts",
-    "build": "bunx --bun buncf build",
+    "build": "bun --bun run buncf build",
     "deploy": "bun run build --production && wrangler deploy",
     "preview": "wrangler preview",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
@@ -16,13 +17,14 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.3",
     "bun-plugin-tailwind": "^0.1.2",
+    "buncf": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "hono": "^4.12.10",
     "lucide-react": "^0.545.0",
     "react": "^19",
     "react-dom": "^19",
-    "tailwind-merge": "^3.3.1",
-    "buncf": "workspace:*"
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@types/react": "^19",
