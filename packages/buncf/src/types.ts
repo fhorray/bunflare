@@ -1,5 +1,68 @@
-import type { IncomingRequestCfProperties, ExecutionContext } from "@cloudflare/workers-types";
+import type { IncomingRequestCfProperties, ExecutionContext, DurableObjectState } from "@cloudflare/workers-types";
+
+export interface WorkflowEvent<T = any> {
+  payload: Readonly<T>;
+  timestamp: Date;
+  instanceId: string;
+}
+
+export type WorkflowSleepDuration = string | number;
+
+export interface WorkflowStep {
+  do<T>(name: string, callback: (ctx: { attempt: number }) => Promise<T>): Promise<T>;
+  do<T>(name: string, config: any, callback: (ctx: { attempt: number }) => Promise<T>): Promise<T>;
+  sleep(name: string, duration: WorkflowSleepDuration): Promise<void>;
+  sleepUntil(name: string, timestamp: Date | number): Promise<void>;
+  waitForEvent<T>(name: string, options: { type: string; timeout?: WorkflowSleepDuration }): Promise<{ payload: T; timestamp: Date; type: string }>;
+}
+
+export type WorkflowStatus = "queued" | "running" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+
+export interface WorkflowInstance {
+  id: string;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  terminate(): Promise<void>;
+  status(): Promise<{ status: WorkflowStatus; error?: string }>;
+}
+
+export interface WorkflowBinding<T = any> {
+  create(options?: { id?: string; params?: T }): Promise<WorkflowInstance>;
+  get(id: string): Promise<WorkflowInstance>;
+}
+
+export interface ContainerInstance {
+  id: string;
+  fetch(request: Request): Promise<Response>;
+  containerFetch(request: Request): Promise<Response>;
+  status(): Promise<{ state: string; error?: string }>;
+}
+
+export interface ContainerBinding {
+  get(id: any): ContainerInstance;
+  getByName(name: string): ContainerInstance;
+}
+
+export interface ContainerOptions {
+  /** Port the container is listening on. @default 8080 */
+  defaultPort?: number;
+  /** Stop the instance if idle for this long. @default "10m" */
+  sleepAfter?: string;
+  /** Environment variables to pass to the container. */
+  envVars?: Record<string, string>;
+  /** Hook: Run when container successfully starts. */
+  onStart?(): void | Promise<void>;
+  /** Hook: Run when container successfully shuts down. */
+  onStop?(): void | Promise<void>;
+  /** Hook: Run when container errors. */
+  onError?(error: unknown): void | Promise<void>;
+  [key: string]: any;
+}
 import type { BunPlugin, Loader } from "bun";
+
+export interface CloudflareBindings {
+  [key: string]: any;
+}
 
 declare global {
   interface CloudflareBindings {
@@ -11,6 +74,8 @@ declare global {
  * @deprecated Use CloudflareBindings for better type safety with wrangler's generation.
  */
 export interface CloudflareEnv extends CloudflareBindings {}
+
+export type { DurableObjectState };
 
 export interface CloudflareContext<E = CloudflareBindings> {
   env: E;

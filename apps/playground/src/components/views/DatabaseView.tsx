@@ -24,7 +24,9 @@ export function DatabaseView() {
     setLoading(true);
     try {
       const res = await fetch('/api/db');
-      const data = await res.json();
+      const data = (await res.json()) as {
+        users: { id: number; name: string }[];
+      };
       if (data.users) setUsers(data.users);
     } finally {
       setLoading(false);

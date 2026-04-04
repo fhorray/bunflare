@@ -2,53 +2,68 @@
 
 @layer base {
   :root {
-    --purple-primary: 270 95% 75%;
+    --purple-primary: 250 89% 65%;
     --orange-primary: 25 95% 60%;
+    
+    /* Muted Brand Colors for Light Mode */
+    --brand-d1: 217 91% 60%;
+    --brand-r2: 25 95% 60%;
+    --brand-kv: 322 81% 60%;
+    --brand-routing: 250 89% 65%;
+    --brand-ws: 171 77% 45%;
+    --brand-do: 270 95% 65%;
+    --brand-wf: 38 92% 50%;
+    
     @apply font-sans;
   }
 
   body {
-    @apply min-w-[320px] min-h-screen m-0 bg-background text-foreground antialiased;
-    background-image: 
-      radial-gradient(at 0% 0%, hsla(270, 95%, 75%, 0.1) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, hsla(25, 95%, 60%, 0.05) 0px, transparent 50%);
+    @apply min-w-[320px] min-h-screen m-0 bg-white text-slate-900 antialiased;
   }
 }
 
 @layer components {
   .glass {
-    @apply bg-white/5 backdrop-blur-md border border-white/10;
+    @apply bg-slate-50 border border-slate-200 shadow-sm;
   }
   
   .glass-card {
-    @apply bg-card/40 backdrop-blur-sm border border-border/50 hover:bg-card/50 transition-all duration-300;
+    @apply bg-white border border-slate-200 transition-colors duration-200 shadow-sm;
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer;
+    @apply flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer relative transition-colors duration-200;
   }
 
   .nav-item-active {
-    @apply bg-primary text-primary-foreground scale-[1.02];
+    @apply bg-slate-100 text-slate-950 border border-slate-200;
   }
 
   .nav-item-inactive {
-     @apply text-muted-foreground hover:text-foreground hover:bg-muted/50;
+     @apply text-slate-500 hover:text-slate-900 hover:bg-slate-50;
   }
 
   .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-[hsl(var(--purple-primary))] to-[hsl(var(--orange-primary))];
+    @apply font-bold text-slate-900;
+  }
+  
+  .terminal-area {
+    @apply bg-slate-50 rounded-lg border border-slate-200 font-mono;
+  }
+  
+  .badge-premium {
+    @apply text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider;
   }
 }
 
-/* Custom Scrollbar for a minimalist look */
+/* Minimalist Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  @apply bg-transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
+  @apply bg-slate-200 rounded-full hover:bg-slate-300;
 }

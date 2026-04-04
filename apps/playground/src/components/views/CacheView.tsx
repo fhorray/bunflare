@@ -30,7 +30,7 @@ export function CacheView() {
     setLoading(true);
     try {
       const res = await fetch('/api/redis');
-      const data = await res.json();
+      const data = (await res.json()) as { count: number };
       if (data.count !== undefined) setCount(data.count);
     } finally {
       setLoading(false);
@@ -41,7 +41,7 @@ export function CacheView() {
     setIsIncrementing(true);
     try {
       const res = await fetch('/api/redis', { method: 'POST' });
-      const data = await res.json();
+      const data = (await res.json()) as { count: number };
       if (data.count !== undefined) setCount(data.count);
     } finally {
       setIsIncrementing(false);
@@ -187,8 +187,8 @@ export function CacheView() {
                 Architecture Tip
               </p>
               <p className="text-xs text-muted-foreground italic leading-relaxed">
-                "Access your KV bindings directly through the environment context; 
-                Wrangler provides a perfect local simulation."
+                "Access your KV bindings directly through the environment
+                context; Wrangler provides a perfect local simulation."
               </p>
             </div>
           </CardContent>

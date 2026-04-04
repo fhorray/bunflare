@@ -59,7 +59,12 @@ export function OverviewView() {
               />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">Active</div>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold">Active</div>
+                <span className="text-[8px] bg-green-500/10 text-green-500 border border-green-500/20 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                  Operational
+                </span>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">{stat.desc}</p>
             </CardContent>
           </Card>

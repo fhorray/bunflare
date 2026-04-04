@@ -15,7 +15,7 @@
 	},
 	"kv_namespaces": [
 		{
-			"binding": "KV",
+			"binding": "REDIS",
 			"id": "4288dcaee2f043c9942d6a785c432803"
 		}
 	],
@@ -30,6 +30,42 @@
 			"binding": "DB",
 			"database_name": "DB",
 			"database_id": "9d2496e9-b86c-431b-9da0-69f1cdcdf4c0"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "COUNTER",
+				"class_name": "Counter"
+			},
+			{
+				"name": "IMAGE_PROCESSOR",
+				"class_name": "ImageProcessor"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_classes": ["Counter"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["ImageProcessor"]
+		}
+	],
+	"containers": [
+		{
+			"class_name": "ImageProcessor",
+			"image": "./Dockerfile",
+			"max_instances": 1
+		}
+	],
+	"workflows": [
+		{
+			"name": "processing-workflow",
+			"binding": "PROCESSING_WORKFLOW",
+			"class_name": "ProcessingWorkflow"
 		}
 	],
 	"build": {

@@ -13,6 +13,7 @@
 - **Full-Stack Support**: Serve React/HTML frontends directly from your Worker with zero extra config.
 - **Wrangler Integration**: Works seamlessly with official `wrangler dev` for high-fidelity simulation.
 - **Stabilized Runtime**: Built-in protection against Cloudflare's "Global Scope" and "EvalError" restrictions.
+- **Interactive Networking Tests**: Dedicated UI for testing **Dynamic Parameter Routing**, **Native WebSockets**, and **Simple Durable Objects**.
 
 ## 📦 Install
 
@@ -72,10 +73,12 @@ The plugin handles the "glue" between Bun and Cloudflare so you can focus on you
 
 | Bun API                  | Cloudflare Equivalent      | Status                                   |
 | ------------------------ | -------------------------- | ---------------------------------------- |
-| `Bun.serve({ ... })`     | `export default { fetch }` | **Active** (Full router + middleware)    |
+| `Bun.serve({ ... })`     | `export default { fetch }` | **Active** (Dynamic router + WebSockets) |
 | `Bun.env.MY_VAR`         | `env.MY_VAR`               | **Active** (Worker environment variable) |
 | `process.env.MY_VAR`     | `env.MY_VAR`               | **Active** (Node.js compat)              |
 | `getCloudflareContext()` | `(env, ctx, cf)`           | **Primary** way to access bindings       |
+| `Bun.serve() (WS)`       | `WebSocketPair`            | **Active** (Lifecycle + Pub/Sub)         |
+| `durable({ ... })`       | `export class DO { ... }`  | **Active** (Fluid API wrapper)           |
 | `Bun.s3 / Bun.write`     | `env.BUCKET`               | _Deprecated_ (Use native R2 bindings)    |
 | `bun:sqlite`             | `env.DB`                   | _Deprecated_ (Use native D1 bindings)    |
 | `Bun.redis`              | `env.KV`                   | _Deprecated_ (Use native KV bindings)    |

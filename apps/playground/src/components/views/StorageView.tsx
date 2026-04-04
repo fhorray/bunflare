@@ -313,7 +313,7 @@ export function StorageView() {
               ))}
             </div>
           ) : (
-            <Card className="rounded-2xl border-border/50 overflow-hidden glass-card">
+            <Card className="py-0 rounded-2xl border-border/50 overflow-hidden glass-card">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-muted/40 border-b border-border/50">
@@ -394,7 +394,7 @@ export function StorageView() {
 
         {/* Sidebar Info & Controls */}
         <div className="lg:col-span-1">
-          <Card className="rounded-3xl border-border/50 overflow-hidden glass-card sticky top-8">
+          <Card className="py-0 rounded-3xl border-border/50 overflow-hidden glass-card sticky top-8">
             {selectedFile ? (
               <>
                 <div className="p-6 pb-4 border-b border-border/50 bg-muted/10 flex items-center justify-between">

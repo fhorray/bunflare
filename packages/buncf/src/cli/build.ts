@@ -47,7 +47,7 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
     },
     minify: config.minify ?? (isProd ? true : false),
     sourcemap: config.sourcemap ?? (isProd ? "none" : "linked"),
-    external: [...(config.external ?? []), "wrangler"],
+    external: [...(config.external ?? []), "wrangler", "cloudflare:workers", "cloudflare:email", "@cloudflare/containers"],
     splitting: config.splitting ?? false,
     define: {
       "process.env.NODE_ENV": JSON.stringify(isProd ? "production" : "development"),

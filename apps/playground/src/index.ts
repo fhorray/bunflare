@@ -1,7 +1,42 @@
 import { Hono } from "hono";
 import { serve } from "bun";
-import { getCloudflareContext } from "buncf/runtime";
+import { getCloudflareContext, durable, workflow, container } from "buncf";
+import type { WorkflowEvent, WorkflowStep, CloudflareBindings } from "buncf";
 import index from "./index.html";
+
+// 1. Define a Simple Durable Object using the new fluid API
+export const Counter = durable({
+  async fetch(request: Request, state: DurableObjectState, env: CloudflareBindings) {
+    let count: number = (await state.storage.get("count")) || 0;
+    count++;
+    await state.storage.put("count", count);
+    return Response.json({ count, id: state.id.toString() });
+  }
+});
+
+// 2. Define a Container using the new fluid API
+export const ImageProcessor = container({
+  defaultPort: 8080,
+  sleepAfter: "5m",
+  envVars: {
+    MODE: "high-performance"
+  }
+});
+
+// 2. Define a Simple Workflow using the new fluid API
+export const ProcessingWorkflow = workflow({
+  async run(event: WorkflowEvent<{ triggeredAt: string }>, step: WorkflowStep, env: CloudflareBindings) {
+    const result = await step.do("process data", async () => {
+      return { status: "processed", at: new Date().toISOString() };
+    });
+
+    await step.sleep("wait a bit", "5 seconds");
+
+    await step.do("log result", async () => {
+      console.log("Workflow finished:", result);
+    });
+  }
+});
 
 const app = new Hono<{
   Bindings: CloudflareBindings;
@@ -10,6 +45,41 @@ const app = new Hono<{
 // ─── Routes: Hello World ─────────────────────────────────────────────
 app.get("/api/hello", (c) => {
   return c.json({ message: "Hello, world!", appName: c.env.APP_NAME, method: "GET" });
+});
+
+app.get("/api/do/counter", async (c) => {
+  const { env } = getCloudflareContext();
+  if (!env.COUNTER) return c.json({ error: "COUNTER binding not found" }, { status: 500 });
+  const id = env.COUNTER.idFromName("global");
+  const obj = env.COUNTER.get(id);
+  return obj.fetch(c.req.raw);
+});
+
+app.post("/api/workflow/start", async (c) => {
+  const { env } = getCloudflareContext();
+  if (!env.PROCESSING_WORKFLOW) return c.json({ error: "Workflow binding missing" }, { status: 500 });
+
+  const instance = await env.PROCESSING_WORKFLOW.create({
+    params: { triggeredAt: new Date().toISOString() }
+  });
+
+  return c.json({
+    id: instance.id,
+    status: "Instance created"
+  });
+});
+
+app.get("/api/container/test", async (c) => {
+  const { env } = getCloudflareContext();
+  if (!env.IMAGE_PROCESSOR) return c.json({ error: "Container binding missing" }, { status: 500 });
+  const instance = env.IMAGE_PROCESSOR.getByName("test-instance");
+  
+  // Rewrite the request to the container's root
+  const url = new URL(c.req.url);
+  url.pathname = "/";
+  const proxyReq = new Request(url.toString(), c.req.raw);
+  
+  return instance.fetch(proxyReq);
 });
 
 app.put("/api/hello", (c) => {
@@ -159,7 +229,49 @@ app.get("*", (c) => {
 });
 
 export default serve({
-  fetch: app.fetch,
+  routes: {
+    // 1. Dynamic parameters example
+    "/api/native/:id": (req) => {
+      return Response.json({
+        source: "Native buncf Router",
+        params: req.params,
+        id: req.params.id
+      });
+    },
+    // 2. Wildcard example
+    "/api/files/*": (req) => {
+      return Response.json({
+        source: "Native buncf Router (Wildcard)",
+        path: (req as any).params.any
+      });
+    },
+    // 3. Method-based handler with params
+    "/api/echo/:message": {
+      GET: (req: any) => Response.json({ method: "GET", echo: req.params.message }),
+      POST: (req: any) => Response.json({ method: "POST", echo: req.params.message }),
+    },
+    // 4. WebSocket Example
+    "/ws": (req, server) => {
+      const username = `User_${Math.floor(Math.random() * 1000)}`;
+      // @ts-ignore
+      const success = server.upgrade(req, { data: { username } });
+      return success ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+    }
+  },
+  websocket: {
+    open(ws: any) {
+      ws.subscribe("chat");
+      ws.publish("chat", `${ws.data.username} joined the chat`);
+    },
+    message(ws: any, message) {
+      ws.publish("chat", `${ws.data.username}: ${message}`);
+    },
+    close(ws: any) {
+      ws.publish("chat", `${ws.data.username} left the chat`);
+    }
+  },
+  // @ts-ignore - transformed by buncf to Cloudflare Worker fetch(request, env, ctx)
+  fetch: (req, env, ctx) => app.fetch(req, env, ctx),
   port: 3004,
   development: process.env.NODE_ENV !== "production" && {
     hmr: true,

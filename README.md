@@ -72,10 +72,13 @@ The plugin handles the "glue" between Bun and Cloudflare so you can focus on you
 
 | Bun API                  | Cloudflare Equivalent      | Status                                   |
 | ------------------------ | -------------------------- | ---------------------------------------- |
-| `Bun.serve({ ... })`     | `export default { fetch }` | **Active** (Full router + middleware)    |
+| `Bun.serve({ ... })`     | `export default { fetch }` | **Active** (Dynamic router + WebSockets) |
 | `Bun.env.MY_VAR`         | `env.MY_VAR`               | **Active** (Worker environment variable) |
 | `process.env.MY_VAR`     | `env.MY_VAR`               | **Active** (Node.js compat)              |
 | `getCloudflareContext()` | `(env, ctx, cf)`           | **Primary** way to access bindings       |
+| `Bun.serve() (WS)`       | `WebSocketPair`            | **Active** (Lifecycle + Pub/Sub)         |
+| `durable({ ... })`       | `export class DO { ... }`  | **Active** (Fluid API wrapper)           |
+| `workflow({ ... })`      | `export class WF { ... }`  | **Active** (Multi-step automation)       |
 | `Bun.s3 / Bun.write`     | `env.BUCKET`               | _Deprecated_ (Use native R2 bindings)    |
 | `bun:sqlite`             | `env.DB`                   | _Deprecated_ (Use native D1 bindings)    |
 | `Bun.redis`              | `env.KV`                   | _Deprecated_ (Use native KV bindings)    |
@@ -252,6 +255,48 @@ export default serve({
 
 > [!CAUTION]
 > Always use the **Lazy Fetch Wrapper** `fetch: (req, env, ctx) => app.fetch(req, env, ctx)`. This prevents "Disallowed operation called within global scope" errors by deferring framework initialization until the first request.
+
+---
+
+## ⛓️ Cloudflare Workflows (`workflow()`)
+
+Define durable, multi-step background processes with a fluid API:
+
+```typescript
+import { workflow } from "buncf";
+
+export const MyProcess = workflow({
+  async run(event, step, env: CloudflareBindings) {
+    const data = await step.do("fetch data", async () => {
+      return await fetch("https://api.example.com/data").then(res => res.json());
+    });
+
+    await step.sleep("wait a bit", "1 minute");
+
+    await step.do("save to bucket", async () => {
+      await env.BUCKET.put("result.json", JSON.stringify(data));
+    });
+  }
+});
+```
+
+---
+
+## 💎 Durable Objects (`durable()`)
+
+Define persistent state with a clean, functional wrapper:
+
+```typescript
+import { durable } from "buncf";
+
+export const Counter = durable({
+  async fetch(request, state: DurableObjectState, env: CloudflareBindings) {
+    let count = (await state.storage.get<number>("count")) || 0;
+    await state.storage.put("count", ++count);
+    return Response.json({ count });
+  }
+});
+```
 
 ---
 
