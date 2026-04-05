@@ -157,6 +157,7 @@ async function main() {
     // This maintains a "Bun-native" hybrid architecture.
     s.message("Transforming exports/paths for NPM distribution...");
     if (pkg.exports) pkg.exports = transformValue(pkg.exports);
+    if (pkg.bin) pkg.bin = transformValue(pkg.bin);
     if (pkg.main) pkg.main = transformValue(pkg.main, "main");
     if (pkg.module) pkg.module = transformValue(pkg.module, "module");
     if (pkg.types) pkg.types = transformValue(pkg.types, "types");

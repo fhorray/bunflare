@@ -1,6 +1,6 @@
 {
   "name": "bunflare",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "description": "bunflare: High-performance Cloudflare Workers development with Bun.",
   "keywords": [
@@ -32,25 +32,25 @@
   },
   "type": "module",
   "bin": {
-    "bunflare": "./src/cli/index.ts"
+    "bunflare": "./dist/cli/index.js"
   },
   "source": "./src/index.ts",
-  "main": "./src/index.ts",
-  "module": "./src/index.ts",
-  "types": "./src/types.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types.d.ts",
   "exports": {
     ".": {
-      "import": "./src/index.ts",
-      "types": "./src/types.ts"
+      "import": "./dist/index.js",
+      "types": "./dist/types.d.ts"
     },
     "./plugin": {
-      "import": "./src/plugin.ts"
+      "import": "./dist/plugin.js"
     },
     "./config": {
-      "import": "./src/config.ts"
+      "import": "./dist/config.js"
     },
     "./runtime": {
-      "import": "./src/runtime/context.ts"
+      "import": "./dist/runtime/context.js"
     },
     "./html": {
       "types": "./html.d.ts"
