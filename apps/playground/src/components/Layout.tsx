@@ -83,7 +83,7 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
               Playground
             </h1>
             <span className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-1">
-              buncf core
+              bunflare core
             </span>
           </div>
         </div>

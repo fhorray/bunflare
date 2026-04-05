@@ -77,7 +77,7 @@
 		}
 	],
 	// "build": {
-	// 	"command": "bun --bun run buncf build",
+	// 	"command": "bun --bun run bunflare build",
 	// 	"watch_dir": "src"
 	// }
 }

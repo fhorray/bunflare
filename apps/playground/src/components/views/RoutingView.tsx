@@ -36,7 +36,7 @@ export function RoutingView() {
         </h2>
         <p className="text-slate-500 text-sm">
           Test URLPattern matching and dynamic parameter extraction using
-          buncf's native router.
+          bunflare's native router.
         </p>
       </div>
 

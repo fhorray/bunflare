@@ -1,0 +1,76 @@
+{
+  "name": "bunflare",
+  "version": "0.1.1",
+  "license": "MIT",
+  "description": "bunflare: High-performance Cloudflare Workers development with Bun.",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "bun",
+    "serverless",
+    "typescript",
+    "d1",
+    "r2",
+    "kv"
+  ],
+  "access": "public",
+  "author": "fhorray",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fhorray/bunflare.git",
+    "directory": "packages/bunflare"
+  },
+  "bugs": {
+    "url": "https://github.com/fhorray/bunflare/issues"
+  },
+  "homepage": "https://github.com/fhorray/bunflare#readme",
+  "scripts": {
+    "build": "bun run ../../scripts/build.ts && tsc --emitDeclarationOnly",
+    "test": "bun test",
+    "check-types": "tsc --noEmit",
+    "lint": "bunx biome check ."
+  },
+  "type": "module",
+  "bin": {
+    "bunflare": "./src/cli/index.ts"
+  },
+  "source": "./src/index.ts",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/types.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/types.ts"
+    },
+    "./plugin": {
+      "import": "./src/plugin.ts"
+    },
+    "./config": {
+      "import": "./src/config.ts"
+    },
+    "./runtime": {
+      "import": "./src/runtime/context.ts"
+    },
+    "./html": {
+      "types": "./html.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "typescript": "^5",
+    "wrangler": "^3.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260403.1",
+    "@types/bun": "latest"
+  },
+  "dependencies": {
+    "magic-string": "^0.30.21",
+    "oxc-parser": "^0.123.0"
+  }
+}

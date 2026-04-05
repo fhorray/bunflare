@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { serve } from "bun";
-import { getCloudflareContext, durable, workflow, container } from "buncf";
-import type { WorkflowEvent, WorkflowStep, CloudflareBindings } from "buncf";
+import { getCloudflareContext, durable, workflow, container } from "bunflare";
+import type { WorkflowEvent, WorkflowStep, CloudflareBindings } from "bunflare";
 import index from "./index.html";
 
 // 1. Define a Simple Durable Object using the new fluid API
@@ -305,7 +305,7 @@ export default serve({
     // 1. Dynamic parameters example
     "/api/native/:id": (req) => {
       return Response.json({
-        source: "Native buncf Router",
+        source: "Native bunflare Router",
         params: req.params,
         id: req.params.id
       });
@@ -313,7 +313,7 @@ export default serve({
     // 2. Wildcard example
     "/api/files/*": (req) => {
       return Response.json({
-        source: "Native buncf Router (Wildcard)",
+        source: "Native bunflare Router (Wildcard)",
         path: req.params.any
       });
     },
@@ -333,7 +333,7 @@ export default serve({
       return hub.fetch(rawRequest);
     }
   },
-  // @ts-ignore - transformed by buncf to Cloudflare Worker fetch(request, env, ctx)
+  // @ts-ignore - transformed by bunflare to Cloudflare Worker fetch(request, env, ctx)
   fetch: (req, env, ctx) => app.fetch(req, env, ctx),
   port: 3004,
   development: process.env.NODE_ENV !== "production" && {

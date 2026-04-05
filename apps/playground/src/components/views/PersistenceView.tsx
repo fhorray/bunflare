@@ -41,9 +41,9 @@ export function PersistenceView() {
           Stateful Clusters
         </h2>
         <p className="text-slate-500 text-sm">
-          Interact with <strong>Durable Objects</strong> through buncf's fluid
-          API. Durable Objects are globally unique stateful entities on the
-          edge.
+          Interact with <strong>Durable Objects</strong> through bunflare's
+          fluid API. Durable Objects are globally unique stateful entities on
+          the edge.
         </p>
       </div>
 
@@ -145,8 +145,8 @@ export function PersistenceView() {
                 The Fluid API
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                buncf transforms a functional object into a full Durable Object
-                class at build time. No boilerplate classes required.
+                bunflare transforms a functional object into a full Durable
+                Object class at build time. No boilerplate classes required.
               </p>
             </div>
 

@@ -1,5 +1,5 @@
 {
-  "name": "buncf-plugin",
+  "name": "bunflare-plugin",
   "module": "index.ts",
   "type": "module",
   "private": true,

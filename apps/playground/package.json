@@ -7,7 +7,7 @@
     "dev": "bun run --hot src/index.ts",
     "dev:cf": "wrangler dev --port 3104 --inspector-port 9204",
     "start": "NODE_ENV=production bun src/index.ts",
-    "build": "bun --bun run buncf build",
+    "build": "bun --bun run bunflare build",
     "deploy": "bun run build --production && wrangler deploy",
     "preview": "wrangler preview",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
@@ -18,7 +18,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.3",
     "bun-plugin-tailwind": "^0.1.2",
-    "buncf": "workspace:*",
+    "bunflare": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "hono": "^4.12.10",
