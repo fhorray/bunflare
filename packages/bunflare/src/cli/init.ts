@@ -78,7 +78,7 @@ export async function runInit() {
       },
       "build": {
         "command": "bun --bun run bunflare build -q",
-        // "watch_dir": "src"
+        "watch_dir": "src"
       }
     };
 
@@ -130,7 +130,7 @@ ${hasTailwind ? `
 
       // Add scripts
       pkg.scripts = pkg.scripts || {};
-      pkg.scripts["dev"] = "bunflare build && wrangler dev";
+      pkg.scripts["dev"] = "bunflare dev";
       pkg.scripts["deploy"] = "bunflare build --production && wrangler deploy";
       pkg.scripts["cf-typegen"] = "wrangler types --env-interface CloudflareBindings";
 

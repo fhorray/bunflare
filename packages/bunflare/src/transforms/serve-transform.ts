@@ -424,7 +424,17 @@ const $$worker = {
     });
     globalThis.$$upgradeResponse = null;
 
-    if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
+    const $$isDev = typeof process !== "undefined" && (process.env.NODE_ENV === "development" || $$options.development);
+
+    if ($$isDev && env?.ASSETS) {
+      // In development, we allow routes to take priority for HTML requests 
+      // to ensure Wrangler can inject live-reload scripts into the responses.
+      const isHTMLRequest = request.headers.get("accept")?.includes("text/html");
+      if (!isHTMLRequest) {
+        const assetResponse = await env.ASSETS.fetch(request.clone());
+        if (assetResponse.status !== 404) return assetResponse;
+      }
+    } else if (env?.ASSETS && typeof env.ASSETS.fetch === "function") {
       const assetResponse = await env.ASSETS.fetch(request.clone());
       if (assetResponse.status !== 404) return assetResponse;
     }

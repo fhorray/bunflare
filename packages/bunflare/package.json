@@ -1,6 +1,6 @@
 {
   "name": "bunflare",
-  "version": "0.1.2",
+  "version": "0.1.14",
   "license": "MIT",
   "description": "bunflare: High-performance Cloudflare Workers development with Bun.",
   "keywords": [
@@ -63,7 +63,7 @@
   ],
   "peerDependencies": {
     "typescript": "^5",
-    "wrangler": "^3.0.0"
+    "wrangler": ">=3.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260403.1",

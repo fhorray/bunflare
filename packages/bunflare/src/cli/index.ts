@@ -22,6 +22,14 @@ async function main() {
       break;
     }
 
+    case "dev": {
+      const args = process.argv.slice(2);
+      const quiet = args.includes("--quiet") || args.includes("-q");
+      const { runDev } = await import("./dev");
+      await runDev({ quiet });
+      break;
+    }
+
     case "doctor": {
       const { runDoctor } = await import("./doctor");
       await runDoctor();
@@ -40,6 +48,7 @@ async function main() {
 
   Comandos:
     init                🚀 Inicializa a configuração do projeto (wrangler.jsonc + config).
+    dev                 🛠️  Inicia o ambiente de desenvolvimento (build + wrangler dev).
     build              📦 Transpila e bundla seu worker para produção.
     build --production 🚀 Build otimizado (minify + drop console + sem sourcemaps).
     build --quiet      🤫 Build silencioso (sem logs, ideal para CI/CD).

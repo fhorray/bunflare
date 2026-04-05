@@ -10,7 +10,7 @@ export function cloudflarePlugin(config?: BunflareConfig, quiet: boolean = false
     async setup(build) {
       // 1. Load wrangler configuration as the source of truth
       const wranglerConfig = await loadWranglerConfig();
-      
+
       if (wranglerConfig) {
         if (!quiet) {
           console.log(`[bunflare] ⚡ Loaded wrangler configuration from ${existsSync("wrangler.toml") ? "wrangler.toml" : existsSync("wrangler.json") ? "wrangler.json" : "wrangler.jsonc"}`);
@@ -21,9 +21,8 @@ export function cloudflarePlugin(config?: BunflareConfig, quiet: boolean = false
         }
       }
 
-      // 2. Resolve shims (Removed legacy bun:sqlite shim resolution)
 
-      // 3. Load and transform source code
+      // 2. Load and transform source code
       build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, async (args) => {
         const source = readFileSync(args.path, "utf8");
         const extension = args.path.split('.').pop() as string;
@@ -50,7 +49,6 @@ export function cloudflarePlugin(config?: BunflareConfig, quiet: boolean = false
         };
       });
 
-      // No more auto-generation in onEnd!
     }
   };
 }
