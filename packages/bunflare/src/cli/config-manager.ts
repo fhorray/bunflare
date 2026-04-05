@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
+import { normalizeResourceName } from "./utils";
 
 export interface WranglerConfig {
   name?: string;
@@ -17,8 +18,8 @@ export class ConfigManager {
   private isJsonc: boolean;
 
   constructor(rootDir: string) {
-    const jsoncPath = path.join(rootDir, "wrangler.jsonc");
-    const tomlPath = path.join(rootDir, "wrangler.toml");
+    const jsoncPath = path.resolve(rootDir, "wrangler.jsonc");
+    const tomlPath = path.resolve(rootDir, "wrangler.toml");
 
     if (existsSync(jsoncPath)) {
       this.configPath = jsoncPath;
@@ -44,56 +45,72 @@ export class ConfigManager {
         .replace(/,\s*([\}\]])/g, "$1"); // Strip trailing commas
       return JSON.parse(stripped);
     } else {
-      // Basic TOML parsing (stub, ideally use a real parser if needed)
-      // For now, we mainly support JSONC as it's the Bunflare recommendation.
       return {}; 
     }
   }
 
-  async write(config: WranglerConfig): Promise<void> {
+  write(config: WranglerConfig): void {
     if (this.isJsonc) {
-      await Bun.write(this.configPath, JSON.stringify(config, null, 2));
-    } else {
-      // TOML writing is more complex to preserve formatting.
-      // We might want to warn the user or use a library like @iarna/toml if available.
+      const output = JSON.stringify(config, null, 2);
+      // Synchronous write to avoid race conditions during CLI execution
+      writeFileSync(this.configPath, output);
     }
   }
 
+  /**
+   * Adds or updates a binding in the configuration (UPSERT).
+   */
   addBinding(type: "d1" | "kv" | "r2" | "do" | "workflow" | "browser" | "queue" | "queue-consumer" | "cron" | "ratelimit", data: any): void {
     const config = this.read();
+    const normalizedDataName = data.name ? normalizeResourceName(data.name) : null;
+    const normalizedDataBinding = data.binding ? normalizeResourceName(data.binding) : 
+                                  data.queue ? normalizeResourceName(data.queue) : null;
     
     if (type === "d1") {
       config.d1_databases = config.d1_databases || [];
-      if (!config.d1_databases.some(d => d.binding === data.binding)) config.d1_databases.push(data);
+      const idx = config.d1_databases.findIndex(d => normalizeResourceName(d.binding) === normalizedDataBinding);
+      if (idx === -1) config.d1_databases.push(data);
+      else config.d1_databases[idx] = { ...config.d1_databases[idx], ...data };
     } else if (type === "kv") {
       config.kv_namespaces = config.kv_namespaces || [];
-      if (!config.kv_namespaces.some(k => k.binding === data.binding)) config.kv_namespaces.push(data);
+      const idx = config.kv_namespaces.findIndex(k => normalizeResourceName(k.binding) === normalizedDataBinding);
+      if (idx === -1) config.kv_namespaces.push(data);
+      else config.kv_namespaces[idx] = { ...config.kv_namespaces[idx], ...data };
     } else if (type === "r2") {
       config.r2_buckets = config.r2_buckets || [];
-      if (!config.r2_buckets.some(r => r.binding === data.binding)) config.r2_buckets.push(data);
+      const idx = config.r2_buckets.findIndex(r => normalizeResourceName(r.binding) === normalizedDataBinding);
+      if (idx === -1) config.r2_buckets.push(data);
+      else config.r2_buckets[idx] = { ...config.r2_buckets[idx], ...data };
     } else if (type === "do") {
       config.durable_objects = config.durable_objects || { bindings: [] };
       config.durable_objects.bindings = config.durable_objects.bindings || [];
-      if (!config.durable_objects.bindings.some((b: any) => b.name === data.name)) {
-        config.durable_objects.bindings.push(data);
-      }
+      const idx = config.durable_objects.bindings.findIndex((b: any) => 
+        normalizeResourceName(b.name) === normalizedDataName || normalizeResourceName(b.class_name) === normalizedDataName
+      );
+      if (idx === -1) config.durable_objects.bindings.push(data);
+      else config.durable_objects.bindings[idx] = { ...config.durable_objects.bindings[idx], ...data };
     } else if (type === "workflow") {
       config.workflows = config.workflows || [];
-      if (!config.workflows.some((w: any) => w.binding === data.binding)) config.workflows.push(data);
+      const idx = config.workflows.findIndex((w: any) => 
+        normalizeResourceName(w.binding) === normalizedDataBinding || normalizeResourceName(w.name) === normalizedDataName
+      );
+      if (idx === -1) config.workflows.push(data);
+      else config.workflows[idx] = { ...config.workflows[idx], ...data };
     } else if (type === "browser") {
-      config.browser = data;
+      config.browser = { ...config.browser, ...data };
     } else if (type === "queue") {
       config.queues = config.queues || { producers: [] };
       config.queues.producers = config.queues.producers || [];
-      if (!config.queues.producers.some((q: any) => q.binding === data.binding)) {
-        config.queues.producers.push(data);
-      }
+      const idx = config.queues.producers.findIndex((q: any) => normalizeResourceName(q.binding) === normalizedDataBinding);
+      if (idx === -1) config.queues.producers.push(data);
+      else config.queues.producers[idx] = { ...config.queues.producers[idx], ...data };
     } else if (type === "queue-consumer") {
       config.queues = config.queues || { consumers: [] };
       config.queues.consumers = config.queues.consumers || [];
-      if (!config.queues.consumers.some((q: any) => q.queue === data.queue)) {
-        config.queues.consumers.push(data);
-      }
+      const normalizedDataQueue = normalizeResourceName(data.queue);
+      const idx = config.queues.consumers.findIndex((q: any) => normalizeResourceName(q.queue) === normalizedDataQueue);
+      if (idx === -1) config.queues.consumers.push(data);
+      else config.queues.consumers[idx] = { ...config.queues.consumers[idx], ...data };
     } else if (type === "cron") {
       config.triggers = config.triggers || { crons: [] };
       config.triggers.crons = config.triggers.crons || [];
@@ -102,7 +119,9 @@ export class ConfigManager {
       }
     } else if (type === "ratelimit") {
       config.ratelimits = config.ratelimits || [];
-      if (!config.ratelimits.some((r: any) => r.name === data.name)) config.ratelimits.push(data);
+      const idx = config.ratelimits.findIndex((r: any) => normalizeResourceName(r.name) === normalizedDataName);
+      if (idx === -1) config.ratelimits.push(data);
+      else config.ratelimits[idx] = { ...config.ratelimits[idx], ...data };
     }
 
     this.write(config);
@@ -112,7 +131,6 @@ export class ConfigManager {
     const config = this.read();
     const pending: { type: string, name: string, binding: string }[] = [];
 
-    // Check D1
     if (config.d1_databases) {
       for (const db of config.d1_databases) {
         if (db.database_id === "placeholder-id" || !db.database_id) {
@@ -120,8 +138,6 @@ export class ConfigManager {
         }
       }
     }
-
-    // Check KV
     if (config.kv_namespaces) {
       for (const kv of config.kv_namespaces) {
         if (kv.id === "placeholder-id" || !kv.id) {
@@ -129,9 +145,6 @@ export class ConfigManager {
         }
       }
     }
-
-    // Check R2 (R2 doesn't have IDs in the same way, but we can check if it exists)
-    // For R2, we might just check if binding exists but name is placeholder-like
     if (config.r2_buckets) {
       for (const r2 of config.r2_buckets) {
         if (r2.bucket_name.includes("placeholder")) {
@@ -139,19 +152,6 @@ export class ConfigManager {
         }
       }
     }
-
     return pending;
-  }
-
-  updateResourceID(type: string, binding: string, id: string): void {
-    const config = this.read();
-    if (type === "d1" && config.d1_databases) {
-      const db = config.d1_databases.find(d => d.binding === binding);
-      if (db) db.database_id = id;
-    } else if (type === "kv" && config.kv_namespaces) {
-      const kv = config.kv_namespaces.find(k => k.binding === binding);
-      if (kv) kv.id = id;
-    }
-    this.write(config);
   }
 }

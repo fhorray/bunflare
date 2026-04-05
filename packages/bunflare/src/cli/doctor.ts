@@ -11,7 +11,7 @@ import { scanDirectoryForBindings } from "./scanner";
 /**
  * Diagnostic tool to verify project configuration and health.
  */
-export async function runDoctor(options: { rootDir?: string; fix?: boolean } = {}) {
+export async function runDoctor(options: { rootDir?: string; fix?: boolean; auto?: boolean } = {}) {
   const rootDir = options.rootDir || process.cwd();
   log.header("Bunflare Project Diagnostics", "yellow");
   console.log(pc.dim(`  Checking health in: ${rootDir}\n`));
@@ -114,7 +114,7 @@ export async function runDoctor(options: { rootDir?: string; fix?: boolean } = {
 
       if (options.fix) {
         console.log("");
-        await provisioner.provisionMissingResources();
+        await provisioner.provisionMissingResources(options.auto);
       }
     } else {
       console.log(`  ✅ ${pc.green("Infra")}: All infrastructure resources verified on Cloudflare.`);

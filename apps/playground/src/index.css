@@ -2,68 +2,82 @@
 
 @layer base {
   :root {
-    --purple-primary: 250 89% 65%;
-    --orange-primary: 25 95% 60%;
-    
-    /* Muted Brand Colors for Light Mode */
-    --brand-d1: 217 91% 60%;
-    --brand-r2: 25 95% 60%;
-    --brand-kv: 322 81% 60%;
-    --brand-routing: 250 89% 65%;
-    --brand-ws: 171 77% 45%;
-    --brand-do: 270 95% 65%;
-    --brand-wf: 38 92% 50%;
-    
-    @apply font-sans;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --ring: 215 20.2% 65.1%;
+    --radius: 0.5rem;
   }
 
   body {
-    @apply min-w-[320px] min-h-screen m-0 bg-white text-slate-900 antialiased;
+    @apply min-h-screen bg-white text-slate-950 antialiased selection:bg-indigo-500/10 selection:text-indigo-900;
   }
 }
 
 @layer components {
   .glass {
-    @apply bg-slate-50 border border-slate-200 shadow-sm;
+    @apply bg-white/80 backdrop-blur-md border border-slate-200/50 shadow-sm;
   }
   
   .glass-card {
-    @apply bg-white border border-slate-200 transition-colors duration-200 shadow-sm;
+    @apply bg-white border border-slate-100 transition-all duration-300 hover:border-indigo-100 hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)];
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer relative transition-colors duration-200;
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer relative transition-all duration-300;
   }
 
   .nav-item-active {
-    @apply bg-slate-100 text-slate-950 border border-slate-200;
+    @apply bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm;
   }
 
   .nav-item-inactive {
-     @apply text-slate-500 hover:text-slate-900 hover:bg-slate-50;
+     @apply text-slate-500 hover:text-slate-900 hover:bg-slate-50/50;
   }
 
   .gradient-text {
-    @apply font-bold text-slate-900;
+    @apply font-black tracking-tight text-slate-950;
   }
   
   .terminal-area {
-    @apply bg-slate-50 rounded-lg border border-slate-200 font-mono;
+    @apply bg-slate-950 rounded-2xl border border-slate-800 font-mono shadow-xl;
   }
   
   .badge-premium {
-    @apply text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider;
+    @apply text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-2.5 py-0.5 rounded-full font-black uppercase tracking-[0.15em];
   }
 }
 
 /* Minimalist Scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-200 rounded-full hover:bg-slate-300;
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}
+
+@keyframes pulse-indigo {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-pulse-indigo {
+  animation: pulse-indigo 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

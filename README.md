@@ -48,10 +48,12 @@ The `doctor` command is your best friend for a zero-config setup. It scans your 
 
 - **`bunflare doctor`**: Runs checks for auth, configuration, and infrastructure drift.
 - **`bunflare doctor --fix`** (or `-f`):
-    - 🛠️  **Auto-Provisioning**: Creates missing KV namespaces, D1 databases, and R2 buckets.
+    - 🛠️  **Auto-Provisioning**: Creates missing KV namespaces, D1 databases, and R2 buckets (requires confirmation).
     - ⚡️  **Configuration Sync**: Automatically adds missing `workflows`, `queues`, `triggers`, and `ratelimits` to `wrangler.jsonc`.
-    - 🌐  **Remote Browser**: Enables remote rendering for `browser()` helpers with one click.
     - 🔍  **UUID Sync**: Fixes invalid or placeholder IDs by matching names in your Cloudflare account.
+- **`bunflare doctor --fix --auto`** (or `-a`):
+    - 🚀  **Full Automation**: Bypasses all confirmation prompts for known infrastructure repairs.
+    - 🔇  **Silent Recovery**: Ideal for CI/CD or quickly fixing `placeholder-id` issues without manual intervention.
 
 ---
 

@@ -24,7 +24,11 @@
   "kv_namespaces": [
     {
       "binding": "REDIS",
-      "id": "4288dcaee2f043c9942d6a785c432803"
+      "id": "c6ebcf4db1c44bfa80906c466d8d91cb"
+    },
+    {
+      "binding": "FLAGS_KV",
+      "id": "50043d1a868f4117b691eaeb3acea5dd"
     }
   ],
   "r2_buckets": [
@@ -37,7 +41,7 @@
     {
       "binding": "DB",
       "database_name": "DB",
-      "database_id": "e7e50f43-1a37-42ed-ba31-ddf078955c92"
+      "database_id": "87f1b08d-15ce-443c-bf0b-c905aa76169d"
     }
   ],
   "durable_objects": {
@@ -98,11 +102,6 @@
       "name": "processing-workflow",
       "binding": "PROCESSING_WORKFLOW",
       "class_name": "ProcessingWorkflow"
-    },
-    {
-      "name": "processingworkflow",
-      "binding": "PROCESSINGWORKFLOW",
-      "class_name": "ProcessingWorkflow"
     }
   ],
   "queues": {
@@ -114,7 +113,7 @@
     ],
     "consumers": [
       {
-        "queue": "testqueue"
+        "queue": "test-queue"
       }
     ]
   },

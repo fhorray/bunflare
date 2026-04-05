@@ -115,13 +115,14 @@ app.post("/api/auth/login", authLimiter, async (c) => {
 
 // Smart Cache: Leaderboard
 app.get("/api/cache/leaderboard", async (c) => {
-  const data = await cache.getOrSet("global_leaderboard", { ttl: 30 }, async () => {
+  const data = await cache.getOrSet("global_leaderboard", { ttl: 60 }, async () => {
     // Simulate slow database query
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 800));
     return [
-      { name: "Alice", score: 9500 },
+      { name: "Alice (Top Player)", score: 9500 },
       { name: "Bob", score: 8200 },
-      { name: "Charlie", score: 7100 }
+      { name: "Charlie", score: 7100 },
+      { name: "Dave", score: 6500 }
     ];
   });
   return c.json({ data, source: (c.req.raw as any).cf?.cacheStatus || "miss" });
@@ -130,11 +131,13 @@ app.get("/api/cache/leaderboard", async (c) => {
 // Feature Flags
 app.get("/api/edge/banner", async (c) => {
   const userId = c.req.query("userId") || "anonymous";
-  const showNewBanner = await flags.evaluate("new_homepage_banner", userId);
+  const isEnabled = await flags.evaluate("new_homepage_banner", userId);
   return c.json({
     feature: "new_homepage_banner",
-    enabled: showNewBanner,
-    content: showNewBanner ? "✨ Welcome to the NEW experience!" : "Hello, welcome back."
+    enabled: isEnabled,
+    content: isEnabled 
+      ? `✨ Experimental Experience active for ${userId}` 
+      : `Standard welcome for ${userId}`
   });
 });
 

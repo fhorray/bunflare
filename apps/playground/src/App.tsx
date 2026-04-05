@@ -4,6 +4,7 @@ import { OverviewView } from "./components/views/OverviewView";
 import { DatabaseView } from "./components/views/DatabaseView";
 import { StorageView } from "./components/views/StorageView";
 import { CacheView } from "./components/views/CacheView";
+import { EdgeView } from "./components/views/EdgeView";
 import { RoutingView } from "./components/views/RoutingView";
 import { RealtimeView } from "./components/views/RealtimeView";
 import { PersistenceView } from "./components/views/PersistenceView";
@@ -63,16 +64,20 @@ export function App() {
       case "browser":
         return <BrowserView />;
       case "edge":
-        return <CacheView />;
+        return <EdgeView />;
       default:
         return <OverviewView />;
     }
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {renderContent()}
-    </Layout>
+    <div className="min-h-screen bg-[#030711]">
+      <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+        <div className="animate-in fade-in duration-500">
+          {renderContent()}
+        </div>
+      </Layout>
+    </div>
   );
 }
 

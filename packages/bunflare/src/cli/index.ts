@@ -44,8 +44,9 @@ async function main() {
 
     case "doctor": {
       const fix = args.includes("--fix") || args.includes("-f");
+      const auto = args.includes("--auto") || args.includes("-a");
       const { runDoctor } = await import("./doctor");
-      await runDoctor({ rootDir, fix });
+      await runDoctor({ rootDir, fix, auto });
       break;
     }
 
@@ -78,6 +79,7 @@ ${pc.bold("Options (build/dev/doctor):")}
   ${pc.cyan("--production")}, ${pc.cyan("-p")}    Enable minification and drop console (production)
   ${pc.cyan("--quiet")}, ${pc.cyan("-q")}         Silence build logs (ideal for CI/CD)
   ${pc.cyan("--fix")}, ${pc.cyan("-f")}           Automatically fix configuration issues (doctor only)
+  ${pc.cyan("--auto")}, ${pc.cyan("-a")}          Bypass prompts for known repairs (doctor only)
   ${pc.cyan("--help")}, ${pc.cyan("-h")}          Show this information
 
 ${pc.dim(`Documentation: ${pc.underline("https://github.com/fhorray/bunflare")}`)}

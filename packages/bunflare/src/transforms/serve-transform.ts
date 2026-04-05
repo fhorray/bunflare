@@ -267,14 +267,16 @@ export function transformSource(source: string, filename: string = "index.tsx"):
   async fetch(request) {
     let puppeteer;
     try {
-      puppeteer = await import("@cloudflare/puppeteer");
-      if (puppeteer.default) puppeteer = puppeteer.default;
+      // Use dynamic import to avoid bundling issues if not used
+      const mod = await import("@cloudflare/puppeteer");
+      puppeteer = mod.default || mod;
     } catch (e) {
-      return new Response("Failed to load @cloudflare/puppeteer. Make sure it is installed.", { status: 500 });
+      console.error("[Bunflare Browser] Failed to load @cloudflare/puppeteer:", e);
+      return new Response("Missing @cloudflare/puppeteer dependency.", { status: 500 });
     }
 
     if (!this.env.BROWSER) {
-      return new Response("Browser Rendering binding (BROWSER) not found in Durable Object environment. Ensure it is defined in wrangler.jsonc.", { status: 500 });
+      return new Response("Browser Rendering binding (BROWSER) missing.", { status: 500 });
     }
 
     try {
@@ -282,14 +284,17 @@ export function transformSource(source: string, filename: string = "index.tsx"):
       const page = await browser.newPage();
       try {
         if (typeof this.$$impl.run === "function") {
-          return await this.$$impl.run(page, request, this.env);
+          const result = await this.$$impl.run(page, request, this.env);
+          // Auto-convert non-response returns
+          if (result instanceof Response) return result;
+          return new Response(result);
         }
         return new Response("Browser 'run' handler not found.", { status: 404 });
       } catch (e) {
         console.error("[Bunflare Browser] Execution error:", e);
-        return new Response(e.message, { status: 500 });
+        return new Response("Browser Execution Error: " + e.message, { status: 500 });
       } finally {
-        await browser.close().catch(e => console.error("[Bunflare Browser] Close error:", e));
+        await browser.close().catch(() => {});
       }
     } catch (e) {
       console.error("[Bunflare Browser] Launch error:", e);

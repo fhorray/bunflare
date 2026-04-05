@@ -203,7 +203,7 @@ ${hasTailwind ? `
     const provisioner = new Provisioner(rootDir);
     // Filtering supported bindings in auto-provision
     const supported = selectedBindings.filter(b => ["d1", "kv", "r2"].includes(b));
-    await provisioner.provisionSpecificBindings(supported);
+    await provisioner.provisionMissingResources();
   } else {
     if (!options.yes) {
       s.stop(pc.green("Project initialized successfully!"));
