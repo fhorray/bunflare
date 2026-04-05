@@ -1,14 +1,23 @@
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
+import { log } from "./logger";
+import * as p from "@clack/prompts";
+import pc from "picocolors";
 
 /**
  * Initializes a new bunflare project by generating recommendation config files.
+ * Provides an interactive onboarding experience using @clack/prompts.
  */
-export async function runInit() {
+export async function runInit(options: { yes?: boolean } = {}) {
   const rootDir = process.cwd();
-  console.log("[bunflare] 🚀 Initializing project configuration...");
+  
+  if (!options.yes) {
+    p.intro(pc.bgMagenta(pc.bold(" ☁️  Bunflare Initialization ")));
+  } else {
+    log.header("Initializing project (Automatic Mode)...", "magenta");
+  }
 
-  // 1. Detect Project Info
+  // 1. Detect Initial Project Info
   let projectName = "my-bun-worker";
   let hasTailwind = false;
   const pkgPath = path.join(rootDir, "package.json");
@@ -16,23 +25,53 @@ export async function runInit() {
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
       if (pkg.name) projectName = pkg.name;
-
       const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-      if (deps["bun-plugin-tailwind"]) {
-        hasTailwind = true;
-      }
+      if (deps["bun-plugin-tailwind"]) hasTailwind = true;
     } catch (e) { }
   }
 
-  // 2. Detect Entry Point
-  const entryPoints = [
-    "src/index.ts",
-    "src/index.js",
-    "index.ts",
-    "index.js",
-    "src/main.ts",
-    "src/main.js"
-  ];
+  // 2. Interactive Prompts (Skipped if -y is used)
+  let selectedBindings: string[] = [];
+  
+  if (!options.yes) {
+    const name = await p.text({
+      message: "What is the name of your project?",
+      placeholder: projectName,
+      initialValue: projectName,
+    });
+
+    if (p.isCancel(name)) {
+      p.cancel("Initialization cancelled.");
+      process.exit(0);
+    }
+    projectName = name as string;
+
+    const bindings = await p.multiselect({
+      message: "Which Cloudflare bindings would you like to include?",
+      options: [
+        { value: "kv", label: "KV Namespace", hint: "Key-Value storage" },
+        { value: "d1", label: "D1 Database", hint: "Relational SQL (SQLite)" },
+        { value: "r2", label: "R2 Bucket", hint: "Object storage (S3 compatible)" },
+        { value: "do", label: "Durable Objects", hint: "Stateful coordination" },
+        { value: "workflows", label: "Workflows", hint: "Durable orchestration" },
+        { value: "containers", label: "Containers", hint: "Multi-language containers" },
+        { value: "ai", label: "AI", hint: "Workers AI (Llama, etc.)" },
+      ],
+      required: false,
+    });
+
+    if (p.isCancel(bindings)) {
+      p.cancel("Initialization cancelled.");
+      process.exit(0);
+    }
+    selectedBindings = bindings as string[];
+  }
+
+  const s = p.spinner();
+  if (!options.yes) s.start("Generating configurations...");
+
+  // 3. Detect Entry Point
+  const entryPoints = ["src/index.ts", "src/index.js", "index.ts", "index.js", "src/main.ts", "src/main.js"];
   let detectedEntry = "./src/index.ts";
   for (const ep of entryPoints) {
     if (existsSync(path.join(rootDir, ep))) {
@@ -41,10 +80,10 @@ export async function runInit() {
     }
   }
 
-  // 3. Generate wrangler.jsonc
+  // 4. Generate wrangler.jsonc
   const wranglerPath = path.join(rootDir, "wrangler.jsonc");
   if (!existsSync(wranglerPath) && !existsSync(path.join(rootDir, "wrangler.toml"))) {
-    const wranglerConfig = {
+    const wranglerConfig: any = {
       "$schema": "node_modules/wrangler/config-schema.json",
       "name": projectName,
       "main": "./dist/index.js",
@@ -54,25 +93,6 @@ export async function runInit() {
         "directory": "./dist",
         "binding": "ASSETS"
       },
-      "kv_namespaces": [
-        {
-          "binding": "KV",
-          "id": "placeholder-id"
-        }
-      ],
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": `${projectName}-db`,
-          "database_id": "placeholder-id"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "BUCKET",
-          "bucket_name": `${projectName}-bucket`
-        }
-      ],
       "observability": {
         "enabled": true
       },
@@ -82,17 +102,37 @@ export async function runInit() {
       }
     };
 
+    // Inject selected bindings
+    if (selectedBindings.includes("kv")) {
+      wranglerConfig.kv_namespaces = [{ binding: "KV", id: "placeholder-id" }];
+    }
+    if (selectedBindings.includes("d1")) {
+      wranglerConfig.d1_databases = [{ binding: "DB", database_name: `${projectName}-db`, database_id: "placeholder-id" }];
+    }
+    if (selectedBindings.includes("r2")) {
+      wranglerConfig.r2_buckets = [{ binding: "BUCKET", bucket_name: `${projectName}-bucket` }];
+    }
+    if (selectedBindings.includes("do")) {
+      wranglerConfig.durable_objects = { bindings: [{ name: "MY_DO", class_name: "MyDurableObject" }] };
+    }
+    if (selectedBindings.includes("workflows")) {
+      wranglerConfig.workflows = [{ name: "MY_WORKFLOW", binding: "MY_WORKFLOW", class_name: "MyWorkflow" }];
+    }
+    if (selectedBindings.includes("containers")) {
+      wranglerConfig.containers = [{ name: "MY_CONTAINER" }];
+    }
+    if (selectedBindings.includes("ai")) {
+      wranglerConfig.ai = { binding: "AI" };
+    }
+
     await Bun.write(wranglerPath, JSON.stringify(wranglerConfig, null, 2));
-    console.log("  ✅ Generated wrangler.jsonc");
-  } else {
-    console.log("  ⚠️ wrangler configuration already exists, skipping...");
+    if (!options.yes) s.message("wrangler.jsonc generated");
+    else log.success("wrangler.jsonc generated");
   }
 
-  // 4. Generate bunflare.config.ts
+  // 5. Generate bunflare.config.ts
   const configPath = path.join(rootDir, "bunflare.config.ts");
-  const configPathAlt = path.join(rootDir, "cloudflare.config.ts");
-
-  if (!existsSync(configPath) && !existsSync(configPathAlt)) {
+  if (!existsSync(configPath) && !existsSync(path.join(rootDir, "cloudflare.config.ts"))) {
     const configContent = `import { defineConfig } from "bunflare/config";
 ${hasTailwind ? 'import tailwind from "bun-plugin-tailwind";\n' : ""}
 export default defineConfig({
@@ -109,41 +149,33 @@ ${hasTailwind ? `
 });
 `;
     await Bun.write(configPath, configContent);
-    console.log("  ✅ Generated bunflare.config.ts");
-  } else {
-    console.log("  ⚠️ bunflare.config.ts already exists, skipping...");
+    if (!options.yes) s.message("bunflare.config.ts generated");
+    else log.success("bunflare.config.ts generated");
   }
 
-  // 5. Update package.json with dependencies and scripts
+  // 6. Update package.json
   if (existsSync(pkgPath)) {
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-
-      // Add dependencies
       pkg.devDependencies = pkg.devDependencies || {};
-      if (!pkg.devDependencies.bunflare && !pkg.dependencies?.bunflare) {
-        pkg.devDependencies.bunflare = "latest";
-      }
-      if (!pkg.devDependencies.wrangler && !pkg.dependencies?.wrangler) {
-        pkg.devDependencies.wrangler = "latest";
-      }
-
-      // Add scripts
+      if (!pkg.devDependencies.bunflare && !pkg.dependencies?.bunflare) pkg.devDependencies.bunflare = "latest";
+      if (!pkg.devDependencies.wrangler && !pkg.dependencies?.wrangler) pkg.devDependencies.wrangler = "latest";
+      
       pkg.scripts = pkg.scripts || {};
       pkg.scripts["dev"] = "bunflare dev";
-      pkg.scripts["deploy"] = "bunflare build --production && wrangler deploy";
+      pkg.scripts["deploy"] = "bunflare deploy";
       pkg.scripts["cf-typegen"] = "wrangler types --env-interface CloudflareBindings";
 
       await Bun.write(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-      console.log("  ✅ Updated package.json with wrangler, bunflare, and scripts");
-    } catch (e) {
-      console.error("  ❌ Failed to update package.json:", e);
-    }
+      if (!options.yes) s.message("package.json updated");
+      else log.success("package.json updated");
+    } catch (e) { }
   }
 
-  console.log("\n[bunflare] ✨ Initialization complete!");
-  console.log("[bunflare] 💡 Next steps:");
-  console.log("    1. Run 'bun install' to install dependencies.");
-  console.log("    2. Run 'bun run dev' to start development server.");
-  console.log("    3. Run 'bun run cf-typegen' to generate binding types.");
+  if (!options.yes) {
+    s.stop(pc.green("Project initialized successfully!"));
+    p.outro(pc.bgGreen(pc.black(" Get started by running 'bun run dev' ")));
+  } else {
+    log.timing("Initialization complete", 0);
+  }
 }

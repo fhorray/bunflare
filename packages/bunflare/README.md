@@ -8,12 +8,12 @@
 
 ## ✨ Key Features
 
-- **🚀 Native-First Performance**: No heavy abstractions. Use standard Cloudflare bindings (`env.DB`, `env.KV`, `env.BUCKET`) with native Bun feel.
+- **🚀 Native-First Performance**: No heavy abstractions. Use standard Cloudflare bindings (`env.DB`, `env.KV`, `env.BUCKET`) and Bun's native `serve` API.
 - **⚡️ Industrial Dev Mode**: The new `bunflare dev` command orchestrates everything. Save a file, and see the browser refresh in milliseconds.
+- **🛡️ Build Coalescing**: Anti-spam protection for `Ctrl+S`. No more directory errors during rapid saves.
 - **🎨 Full-Stack Synergy**: Seamlessly serve React, Vue, or vanilla HTML/CSS directly from your Worker with automatic asset bundling.
 - **🛠️ Zero-Config Bundling**: Intelligent entry point detection finds your `index.ts/tsx` and handles asset imports automatically.
 - **🌪️ Cloudflare Modernity**: First-class support for **Durable Objects**, **Workflows**, and **Containers** via fluid functional APIs.
-- **🧬 Type-Safe by Design**: Integrated with Wrangler's `cf-typegen` for end-to-end IntelliSense without manual generics.
 
 ---
 
@@ -28,24 +28,29 @@ bun add -d bunflare
 ## 🚀 Quick Start in 30 Seconds
 
 ### 1. Initialize your project
+
 ```bash
 bunx bunflare init
 ```
 
 ### 2. Write your Worker
+
 ```typescript
 // src/index.ts
-import { serve, getCloudflareContext } from 'bunflare';
+import { serve } from 'bun'; // Import native serve from Bun
+import { getCloudflareContext } from 'bunflare';
 
 export default serve({
   routes: {
     '/api/hello': async () => {
       const { env } = getCloudflareContext();
       // Use your native D1 database binding
-      const result = await env.DB.prepare('SELECT "Hello World" as msg').first();
+      const result = await env.DB.prepare(
+        'SELECT "Hello World" as msg',
+      ).first();
       return Response.json(result);
     },
-    
+
     // Serve your frontend for all other routes
     '/*': import('./index.html'),
   },
@@ -53,8 +58,9 @@ export default serve({
 ```
 
 ### 3. Start Developing
+
 ```bash
-bun dev
+bunflare dev
 ```
 
 ---
@@ -64,8 +70,8 @@ bun dev
 Developing for Workers has never been this smooth. `bunflare dev` provides a unified experience:
 
 - **Instant Rebuilds**: Uses Bun's internal bundler for sub-100ms rebuilds.
+- **Smart Filtering**: Hides bulky Wrangler bindings tables but keeps your request logs and server status clear.
 - **Live Reload**: Automatically refreshes your browser when code changes.
-- **High-Fidelity Simulation**: Powered by official `wrangler`, with local persistence for D1/KV.
 - **Quiet Mode**: Use `-q` for a clean, distraction-free terminal.
 
 ---
@@ -74,39 +80,37 @@ Developing for Workers has never been this smooth. `bunflare dev` provides a uni
 
 `bunflare` surgically transforms Bun-native calls into optimized Cloudflare Worker exports.
 
-| Bun / Bunflare API       | Cloudflare Native Equivalent | Capability                                |
-| :----------------------- | :--------------------------- | :---------------------------------------- |
-| `serve({ routes })`      | `export default { fetch }`   | **Dynamic Routing + WebSockets**          |
-| `getCloudflareContext()` | `(env, ctx, cf)`             | **Universal Binding Access**              |
-| `durable({ ... })`       | `export class MyDO { ... }`  | **Persistent State + Pub/Sub**            |
-| `workflow({ ... })`      | `export class MyWF { ... }`  | **Durable Orchestration**                 |
-| `container({ ... })`     | `export class MyCN { ... }`  | **Multi-language Containers**             |
-| `Bun.env` / `process.env`| `env` Bindings               | **Automatic Var Injection**               |
+| Bun API                   | Cloudflare Native Equivalent | Capability                       |
+| :------------------------ | :--------------------------- | :------------------------------- |
+| `import { serve }`        | `export default { fetch }`   | **Dynamic Routing + WebSockets** |
+| `getCloudflareContext()`  | `(env, ctx, cf)`             | **Universal Binding Access**     |
+| `durable({ ... })`        | `export class MyDO { ... }`  | **Persistent State + Pub/Sub**   |
+| `workflow({ ... })`       | `export class MyWF { ... }`  | **Durable Orchestration**        |
+| `container({ ... })`      | `export class MyCN { ... }`  | **Multi-language Containers**    |
+| `Bun.env` / `process.env` | `env` Bindings               | **Automatic Var Injection**      |
 
 ---
 
 ## 💎 Advanced Features
 
 ### 📡 WebSocket 2.0 (Pub/Sub)
+
 Bunflare brings Bun's powerful publish-subscribe API to Durable Objects. No manual socket management required.
 
 ```typescript
+import { durable } from 'bunflare';
+
 export const ChatHub = durable({
   async webSocketMessage(ws, message) {
     ws.subscribe('room-1');
     ws.publish('room-1', `New message: ${message}`);
-  }
+  },
 });
 ```
 
 ### 🏗️ Automatic Code Splitting
-Stop worrying about the 1MB Worker limit. Bunflare automatically detects large route handlers and wraps them in **dynamic imports**, ensuring your cold starts are lightning-fast.
 
-### 🩺 Diagnostic Tool (`doctor`)
-Check your project health, missing bindings, or configuration errors with one command:
-```bash
-bunflare doctor
-```
+Stop worrying about the 1MB Worker limit. Bunflare automatically detects large route handlers and wraps them in **dynamic imports**, ensuring your cold starts are lightning-fast.
 
 ---
 
@@ -129,11 +133,10 @@ export default defineConfig({
 
 ## 🚀 Deployment
 
-When you're ready for the world:
+When you're ready for the world, use the unified deploy command:
 
 ```bash
-bun run deploy
-# Calls: bunflare build --production && wrangler deploy
+bunflare deploy
 ```
 
 ---

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { transformServe } from "../transforms/serve-transform";
+import { transformServe } from "../src/transforms/serve-transform";
 import "urlpattern-polyfill";
 
 // Helper to evaluate the transformed code and get the fetch function

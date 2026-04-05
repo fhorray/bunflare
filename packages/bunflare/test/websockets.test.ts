@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "bun:test";
-import { transformServe } from "../transforms/serve-transform";
+import { transformServe } from "../src/transforms/serve-transform";
 
 // Mock WebSocketPair for Bun environment
 class MockWebSocket extends EventTarget {

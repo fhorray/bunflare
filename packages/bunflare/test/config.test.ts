@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { defineConfig, loadConfig, loadWranglerConfig } from "../config";
+import { defineConfig, loadConfig, loadWranglerConfig } from "../src/config";
 import { writeFileSync, rmSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

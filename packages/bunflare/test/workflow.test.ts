@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { transformWorkflows } from "../transforms/serve-transform";
+import { transformWorkflows } from "../src/transforms/serve-transform";
 
 describe("transformWorkflows", () => {
   test("should transform basic workflow definition", () => {

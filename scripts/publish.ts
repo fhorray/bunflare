@@ -4,6 +4,9 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { transformValue } from "./publish-utils";
 
+/**
+ * Robust command runner for the publish workflow.
+ */
 async function runCommand(command: string, args: string[], cwd: string) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: "inherit", shell: true, cwd });
@@ -14,13 +17,20 @@ async function runCommand(command: string, args: string[], cwd: string) {
   });
 }
 
+/**
+ * Main Publish Orchestrator.
+ * Handles dev -> build -> publish -> dev transitions atomically.
+ */
 async function main() {
   console.log();
   p.intro(pc.bgCyan(pc.black(" bunflare Package Publisher ")));
 
   const packageDir = resolve(process.cwd(), "packages/bunflare");
+  const pkgPath = resolve(packageDir, "package.json");
+  const readmePath = resolve(packageDir, "README.md");
+  const licensePath = resolve(packageDir, "LICENSE");
 
-  // 1. Version Bump
+  // 1. Version Bump Selection
   const versionType = await p.select({
     message: "What type of version bump are you performing?",
     options: [
@@ -35,7 +45,7 @@ async function main() {
     process.exit(0);
   }
 
-  // 2. NPM Tag
+  // 2. NPM Tag Selection
   const tag = await p.select({
     message: "Which NPM distribution tag should be used?",
     options: [
@@ -61,86 +71,56 @@ async function main() {
   }
 
   const s = p.spinner();
-  const pkgPath = resolve(packageDir, "package.json");
-  const readmePath = resolve(packageDir, "README.md");
-  const licensePath = resolve(packageDir, "LICENSE");
-
-  let originalPkgContent: string | null = null;
+  
+  // Backups for restoration
+  let originalPkgJson: any = null;
+  let devModePkgJson: any = null;
   let originalReadmeContent: string | null = null;
   let originalLicenseContent: string | null = null;
 
+  /**
+   * Cleanup function to restore the repository to its "Dev Mode" (Source-First) state.
+   */
   const cleanup = async () => {
-    // ALWAYS roll back the package files to their original development state
-    if (originalPkgContent) {
-      console.log(pc.yellow("\nRestoring package.json..."));
-      await Bun.write(pkgPath, originalPkgContent);
-      originalPkgContent = null; // Mark as done
+    if (devModePkgJson) {
+      console.log(pc.yellow("\nRestoring package.json to Dev Mode (.ts)..."));
+      await Bun.write(pkgPath, JSON.stringify(devModePkgJson, null, 2) + "\n");
+    } else if (originalPkgJson) {
+      console.log(pc.yellow("\nRolling back package.json change..."));
+      await Bun.write(pkgPath, JSON.stringify(originalPkgJson, null, 2) + "\n");
     }
     
     if (originalReadmeContent) {
-      console.log(pc.yellow("Restoring original README.md..."));
       await Bun.write(readmePath, originalReadmeContent);
-      originalReadmeContent = null; // Mark as done
     }
 
     if (originalLicenseContent) {
-      console.log(pc.yellow("Restoring original LICENSE..."));
       await Bun.write(licensePath, originalLicenseContent);
-      originalLicenseContent = null; // Mark as done
     }
   };
 
-  // ─── SIGNAL HANDLING ──────────────────────────────────────────
-  // This ensures rollback happens even if Ctrl+C (SIGINT) is pressed
-  // or the process is otherwise terminated (SIGTERM).
-  process.on("SIGINT", async () => {
-    await cleanup();
-    process.exit(130); // 130 is the standard exit code for SIGINT
-  });
-
-  process.on("SIGTERM", async () => {
-    await cleanup();
-    process.exit(143); // 143 is the standard exit code for SIGTERM
-  });
+  // Signal Handling
+  process.on("SIGINT", async () => { await cleanup(); process.exit(130); });
+  process.on("SIGTERM", async () => { await cleanup(); process.exit(143); });
 
   try {
-    // 0. Backup original package.json and other files
-    originalPkgContent = await Bun.file(pkgPath).text();
+    // 0. Initial State Capture
+    const rawPkg = await Bun.file(pkgPath).text();
+    originalPkgJson = JSON.parse(rawPkg);
     if (await Bun.file(readmePath).exists()) originalReadmeContent = await Bun.file(readmePath).text();
     if (await Bun.file(licensePath).exists()) originalLicenseContent = await Bun.file(licensePath).text();
 
-    const pkg = JSON.parse(originalPkgContent);
-
-    // A. Sync Root Documentation & License (Resilient)
-    s.start("Syncing Root documentation and license...");
+    // 1. Sync Root Documentation & License
+    s.start("Syncing project documentation...");
     const rootReadmeFile = Bun.file(resolve(process.cwd(), "README.md"));
     const rootLicenseFile = Bun.file(resolve(process.cwd(), "LICENSE"));
 
-    if (await rootReadmeFile.exists()) {
-      await Bun.write(readmePath, await rootReadmeFile.text());
-      s.message("README synced!");
-    }
-    
-    if (await rootLicenseFile.exists()) {
-      await Bun.write(licensePath, await rootLicenseFile.text());
-      s.message("LICENSE synced!");
-    }
+    if (await rootReadmeFile.exists()) await Bun.write(readmePath, await rootReadmeFile.text());
+    if (await rootLicenseFile.exists()) await Bun.write(licensePath, await rootLicenseFile.text());
 
-    // B. Build (Generate dist/types)
-    s.message("Running build (tsc --emitDeclarationOnly)...");
-    await runCommand("bun", ["run", "build"], packageDir);
-    
-    // Sync docs to dist as well (self-contained dist)
-    const distReadmePath = resolve(packageDir, "dist/README.md");
-    const distLicensePath = resolve(packageDir, "dist/LICENSE");
-    if (await rootReadmeFile.exists()) await Bun.write(distReadmePath, await rootReadmeFile.text());
-    if (await rootLicenseFile.exists()) await Bun.write(distLicensePath, await rootLicenseFile.text());
-    
-    s.message("Build and dist-sync complete!");
-
-    // C. Bump Version
-    s.message(`Bumping version (${versionType})...`);
-    const oldVersion = (pkg.version as string) || "0.0.0";
+    // 2. Version Calculation
+    s.message("Calculating new version...");
+    const oldVersion = originalPkgJson.version || "0.0.0";
     const parts = oldVersion.split(".").map(Number);
     const major = parts[0] || 0;
     const minor = parts[1] || 0;
@@ -151,45 +131,46 @@ async function main() {
     else if (versionType === "minor") newVersion = `${major}.${minor + 1}.0`;
     else if (versionType === "patch") newVersion = `${major}.${minor}.${patch + 1}`;
 
-    pkg.version = newVersion;
+    // 3. Create "Dev Mode" Persistence (Base for repo)
+    devModePkgJson = { ...originalPkgJson, version: newVersion };
 
-    // Persist new version to package.json immediately (Source-First)
-    // This ensures that even if transformations or publish fail, the version is kept.
-    const cleanVersionedPkg = `${JSON.stringify(pkg, null, 2)}\n`;
-    await Bun.write(pkgPath, cleanVersionedPkg);
+    // 4. Create "Publish Mode" (Transformation for NPM)
+    // We deep clone to avoid polluting devModePkgJson
+    const publishPkgJson = JSON.parse(JSON.stringify(devModePkgJson));
+    s.message("Preparing distribution package...");
+    if (publishPkgJson.exports) publishPkgJson.exports = transformValue(publishPkgJson.exports);
+    if (publishPkgJson.bin) publishPkgJson.bin = transformValue(publishPkgJson.bin);
+    if (publishPkgJson.main) publishPkgJson.main = transformValue(publishPkgJson.main, "main");
+    if (publishPkgJson.module) publishPkgJson.module = transformValue(publishPkgJson.module, "module");
+    if (publishPkgJson.types) publishPkgJson.types = transformValue(publishPkgJson.types, "types");
     
-    // Update backup to this "clean versioned" state so cleanup restores this instead of the old version
-    originalPkgContent = cleanVersionedPkg;
-
-    // D. Transform Exports (.ts -> .d.ts only for types)
-    // This maintains a "Bun-native" hybrid architecture.
-    s.message("Transforming exports/paths for NPM distribution...");
-    if (pkg.exports) pkg.exports = transformValue(pkg.exports);
-    if (pkg.bin) pkg.bin = transformValue(pkg.bin);
-    if (pkg.main) pkg.main = transformValue(pkg.main, "main");
-    if (pkg.module) pkg.module = transformValue(pkg.module, "module");
-    if (pkg.types) pkg.types = transformValue(pkg.types, "types");
-
-    // E. Include 'dist' in published files
-    if (pkg.files && Array.isArray(pkg.files)) {
-      if (!pkg.files.includes("dist")) pkg.files.push("dist");
+    // Ensure 'dist' is included in files
+    if (publishPkgJson.files && Array.isArray(publishPkgJson.files)) {
+      if (!publishPkgJson.files.includes("dist")) publishPkgJson.files.push("dist");
     }
 
-    await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
-    s.stop(pc.green(`Version bumped to ${newVersion} and paths/files prepared!`));
+    // 5. Write "Publish Mode" to disk TEMPORARILY so build picks it up
+    await Bun.write(pkgPath, JSON.stringify(publishPkgJson, null, 2) + "\n");
 
-    // E. Publish
-    p.log.info(`Ready to publish to NPM with tag '${tag}'...`);
-    // Note: We use --access public for best practice
+    // 6. Execute Build (Ensures fresh dist/ and types with the NEW version)
+    s.message(`Building bunflare v${newVersion}...`);
+    await runCommand("bun", ["run", "build"], packageDir);
+    s.message("Library built successfully!");
+
+    // 7. NPM Publish
+    s.stop(pc.green(`Metadata prepared for v${newVersion}!`));
+    p.log.info(`Broadcasting to NPM with tag '${tag}'...`);
     await runCommand("npm", ["publish", "--tag", tag as string, "--access", "public"], packageDir);
-    p.log.success("Successfully published to NPM! 🚀");
+    
+    p.log.success("Published successfully! 🚀");
+    p.outro(pc.bgGreen(pc.black(" Distribution complete. Local paths restored to .ts ")));
 
-    p.outro(pc.bgGreen(pc.black(" All done! Congrats on the new release! ")));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    s.stop(pc.red(`Publishing failed: ${message}`));
+    s.stop(pc.red(`Publishing aborted: ${message}`));
     process.exit(1);
   } finally {
+    // ALWAYS switch back to Dev Mode (.ts)
     await cleanup();
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { transformDurables } from "../transforms/serve-transform";
+import { transformDurables } from "../src/transforms/serve-transform";
 
 describe("Durable Objects Transformation", () => {
   it("should transform simple durable() to a class", () => {

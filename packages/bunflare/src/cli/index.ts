@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import pc from "picocolors";
+declare const __VERSION__: string;
+const version = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
+import { log } from "./logger";
 import { runBuild } from "./build";
 import { runInit } from "./init";
 
@@ -10,7 +14,9 @@ async function main() {
 
   switch (command) {
     case "init": {
-      await runInit();
+      const args = process.argv.slice(2);
+      const yes = args.includes("--yes") || args.includes("-y");
+      await runInit({ yes });
       break;
     }
 
@@ -30,6 +36,12 @@ async function main() {
       break;
     }
 
+    case "deploy": {
+      const { runDeploy } = await import("./deploy");
+      await runDeploy();
+      break;
+    }
+
     case "doctor": {
       const { runDoctor } = await import("./doctor");
       await runDoctor();
@@ -39,42 +51,42 @@ async function main() {
     case "help":
     case "--help":
     case "-h":
-    default:
+    default: {
       console.log(`
-  bunflare - CLI para Build de apps Bun para Cloudflare Workers
+${pc.magenta(pc.bold("☁️  Bunflare"))} ${pc.dim(`v${version}`)}
+${pc.dim("The speed of Bun. The reach of Cloudflare. Zero-config DX.")}
 
-  Uso:
-    bunx bunflare <comando> [opções]
+${pc.bold("Usage:")}
+  $ ${pc.cyan("bunflare")} <command> [options]
 
-  Comandos:
-    init                🚀 Inicializa a configuração do projeto (wrangler.jsonc + config).
-    dev                 🛠️  Inicia o ambiente de desenvolvimento (build + wrangler dev).
-    build              📦 Transpila e bundla seu worker para produção.
-    build --production 🚀 Build otimizado (minify + drop console + sem sourcemaps).
-    build --quiet      🤫 Build silencioso (sem logs, ideal para CI/CD).
-    doctor             🩺 Verifica a saúde e configuração do projeto.
-    help               ❓ Exibe esta mensagem de ajuda.
-
-  Configuração:
-    A configuração é carregada automaticamente de 'bunflare.config.ts' ou 'cloudflare.config.ts'.
+${pc.bold("Commands:")}
+  ${pc.bold(pc.blue("Development"))}
+    ${pc.green("init")}       🚀  Initialize project (wrangler.jsonc + bunflare.config.ts)
+    ${pc.green("dev")}        🛠️   Start dev server (live reload, smart build, filtering)
+    ${pc.green("doctor")}     🩺  Verify project health and configuration
     
-    Opções principais:
-      - entrypoint: Entrada do seu worker (padrão: ./src/index.ts)
-      - outdir: Diretório de saída (padrão: ./dist)
-      - target: Ambiente de execução ("browser", "bun", "node")
-      - minify: Ativar minificação (boolean ou objeto granular)
-      - sourcemap: Tipo de sourcemap ("linked", "inline", "external", "none")
-      - quiet: Suprimir logs de build (-q)
-      - define: Constantes de build
-      - external: Módulos externos (não incluídos no bundle)
+  ${pc.bold(pc.blue("Production"))}
+    ${pc.green("build")}      📦  Bundle worker and assets for production
+    ${pc.green("deploy")}     ☁️   Build and deploy to Cloudflare in one step
+    
+  ${pc.bold(pc.blue("General"))}
+    ${pc.green("help")}       ❓  Display this message
+
+${pc.bold("Options (build/dev):")}
+  ${pc.cyan("--production")}, ${pc.cyan("-p")}    Enable minification and drop console (production)
+  ${pc.cyan("--quiet")}, ${pc.cyan("-q")}         Silence build logs (ideal for CI/CD)
+  ${pc.cyan("--help")}, ${pc.cyan("-h")}          Show this information
+
+${pc.dim(`Documentation: ${pc.underline("https://github.com/fhorray/bunflare")}`)}
       `);
       break;
+    }
   }
 }
 
 try {
   await main();
 } catch (err) {
-  console.error("[bunflare] ❌ Uncaught error:", err);
+  log.error(`Uncaught error: ${err}`);
   process.exit(1);
 }

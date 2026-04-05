@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { transformServe } from "../transforms/serve-transform";
-import { transformEnv } from "../transforms/env-transform";
-import { getCloudflareContext, setCloudflareContext } from "../runtime/context";
+import { transformServe } from "../src/transforms/serve-transform";
+import { transformEnv } from "../src/transforms/env-transform";
+import { getCloudflareContext, setCloudflareContext } from "../src/runtime/context";
 
 describe("bunflare Plugin Logic", () => {
   describe("Transformations", () => {

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { runBuild } from "./build";
+import { log } from "./logger";
+import pc from "picocolors";
 
 /**
  * Orchestrates the development environment.
@@ -9,18 +11,14 @@ export async function runDev(options: { quiet?: boolean } = {}) {
   const quiet = options.quiet || false;
 
   if (!quiet) {
-    console.log("[bunflare] 🛠️  Starting development environment...");
+    log.header("Starting development environment...", "cyan");
   }
 
   // 1. Initial Build
   const success = await runBuild({ quiet });
   if (!success) {
-    console.error("[bunflare] ❌ Initial build failed. Fix errors and try again.");
+    log.error("Initial build failed. Fix errors and try again.");
     process.exit(1);
-  }
-
-  if (!quiet) {
-    console.log("[bunflare] 📡 Starting wrangler dev...");
   }
 
   // 2. Load Wrangler Config to find the port
@@ -29,6 +27,11 @@ export async function runDev(options: { quiet?: boolean } = {}) {
   const port = wranglerConfig?.dev?.port || 8787;
   const url = `http://localhost:${port}`;
 
+  if (!quiet) {
+    log.info("Starting wrangler dev...");
+    log.line(`  ${pc.green("🚀")} ${pc.bold("Server running at")} ${pc.cyan(pc.underline(url))}`);
+    log.hr();
+  }
 
   // 3. Spawn Wrangler Dev
   const wranglerArgs = ["wrangler", "dev", "--live-reload"];
@@ -36,16 +39,12 @@ export async function runDev(options: { quiet?: boolean } = {}) {
     wranglerArgs.push("--show-interactive-dev-session=false");
   }
 
-  // To filter output while keeping colors and interactivity:
-  // - stdio[0]: inherit (stdin for shortcuts)
-  // - stdio[1]: pipe (stdout for filtering)
-  // - stdio[2]: inherit (stderr for direct error reporting)
   const wrangler = spawn("bunx", wranglerArgs, {
     stdio: ["inherit", "pipe", "inherit"],
     env: {
       ...process.env,
       BUN_RUNTIME: "1",
-      FORCE_COLOR: "1" // Ensure wrangler still outputs colors even when piped
+      FORCE_COLOR: "1" 
     }
   });
 
@@ -56,13 +55,11 @@ export async function runDev(options: { quiet?: boolean } = {}) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line === undefined) continue;
-
-      // Skip the last empty string created by splitting a string that ends with \n
       if (i === lines.length - 1 && line === "") continue;
 
       let processedLine = line
-        .replace("[custom build]", "[bunflare]")
-        .replace(/\[wrangler:.*\]/, "[wrangler]");
+        .replace("[custom build]", pc.magenta("bunflare"))
+        .replace(/\[wrangler:.*\]/, pc.blue("wrangler"));
 
       const cleanLine = processedLine.replace(/\u001b\[[0-9;]*m/g, "").trim();
 
@@ -74,7 +71,6 @@ export async function runDev(options: { quiet?: boolean } = {}) {
 
       // Stop filtering when we see the interactive session box or meaningful logs
       if (isFilteringBindings) {
-        // If we see a log with a method like GET/POST/PUT or a timestamp/bracket, stop filtering
         if (cleanLine.match(/\[wrangler.*\]/) || cleanLine.match(/GET|POST|PUT|DELETE|PATCH/) || cleanLine.startsWith("╭") || cleanLine.includes("Ready on")) {
           isFilteringBindings = false;
         } else {
@@ -94,8 +90,8 @@ export async function runDev(options: { quiet?: boolean } = {}) {
       if (i === lines.length - 1 && line === "") continue;
 
       let processedLine = line
-        .replace("[custom build]", "[bunflare]")
-        .replace(/\[wrangler:.*\]/, "[wrangler]");
+        .replace("[custom build]", pc.magenta("bunflare"))
+        .replace(/\[wrangler:.*\]/, pc.blue("wrangler"));
 
       process.stderr.write(processedLine + "\n");
     }
@@ -103,7 +99,7 @@ export async function runDev(options: { quiet?: boolean } = {}) {
 
   wrangler.on("exit", (code) => {
     if (code !== 0 && code !== null) {
-      console.log(`\n[bunflare] ⚠️  Wrangler exited with code ${code}`);
+      log.warn(`Wrangler exited with code ${code}`);
     }
     process.exit(code || 0);
   });

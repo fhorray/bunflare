@@ -51,6 +51,9 @@ async function runBuild() {
     naming: "[dir]/[name].[ext]",
     root: join(packageDir, "src"),
     external,
+    define: {
+      "__VERSION__": JSON.stringify(pkg.version),
+    },
   });
 
   if (!result.success) {
