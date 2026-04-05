@@ -15,8 +15,10 @@ async function main() {
     }
 
     case "build": {
-      const production = process.argv.includes("--production") || process.argv.includes("-p");
-      await runBuild({ production });
+      const args = process.argv.slice(2);
+      const production = args.includes("--production") || args.includes("-p");
+      const quiet = args.includes("--quiet") || args.includes("-q");
+      await runBuild({ production, quiet });
       break;
     }
 
@@ -40,6 +42,7 @@ async function main() {
     init                🚀 Inicializa a configuração do projeto (wrangler.jsonc + config).
     build              📦 Transpila e bundla seu worker para produção.
     build --production 🚀 Build otimizado (minify + drop console + sem sourcemaps).
+    build --quiet      🤫 Build silencioso (sem logs, ideal para CI/CD).
     doctor             🩺 Verifica a saúde e configuração do projeto.
     help               ❓ Exibe esta mensagem de ajuda.
 
@@ -52,6 +55,7 @@ async function main() {
       - target: Ambiente de execução ("browser", "bun", "node")
       - minify: Ativar minificação (boolean ou objeto granular)
       - sourcemap: Tipo de sourcemap ("linked", "inline", "external", "none")
+      - quiet: Suprimir logs de build (-q)
       - define: Constantes de build
       - external: Módulos externos (não incluídos no bundle)
       `);

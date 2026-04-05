@@ -3,7 +3,19 @@ import { join } from "node:path";
 import fs from "node:fs";
 
 /**
- * Helper to define configuration with type safety.
+ * Helper to define configuration with full type safety via TSDocs.
+ * 
+ * @param config - The Bunflare configuration object.
+ * @returns The same configuration object, typed as BunflareConfig.
+ * 
+ * @example
+ * import { defineConfig } from "bunflare/config";
+ * 
+ * export default defineConfig({
+ *   workerName: "my-worker",
+ *   compatibilityDate: "2024-04-03",
+ *   minify: true
+ * });
  */
 export function defineConfig(config: BunflareConfig): BunflareConfig {
   return config;

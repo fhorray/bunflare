@@ -153,6 +153,14 @@ async function main() {
 
     pkg.version = newVersion;
 
+    // Persist new version to package.json immediately (Source-First)
+    // This ensures that even if transformations or publish fail, the version is kept.
+    const cleanVersionedPkg = `${JSON.stringify(pkg, null, 2)}\n`;
+    await Bun.write(pkgPath, cleanVersionedPkg);
+    
+    // Update backup to this "clean versioned" state so cleanup restores this instead of the old version
+    originalPkgContent = cleanVersionedPkg;
+
     // D. Transform Exports (.ts -> .d.ts only for types)
     // This maintains a "Bun-native" hybrid architecture.
     s.message("Transforming exports/paths for NPM distribution...");

@@ -4,7 +4,7 @@ import { loadWranglerConfig } from "./config";
 import type { BunflareConfig } from "./types";
 import { readFileSync, existsSync } from "node:fs";
 
-export function cloudflarePlugin(config?: BunflareConfig): BunPlugin {
+export function cloudflarePlugin(config?: BunflareConfig, quiet: boolean = false): BunPlugin {
   return {
     name: "bunflare",
     async setup(build) {
@@ -12,9 +12,13 @@ export function cloudflarePlugin(config?: BunflareConfig): BunPlugin {
       const wranglerConfig = await loadWranglerConfig();
       
       if (wranglerConfig) {
-        console.log(`[bunflare] ⚡ Loaded wrangler configuration from ${existsSync("wrangler.toml") ? "wrangler.toml" : existsSync("wrangler.json") ? "wrangler.json" : "wrangler.jsonc"}`);
+        if (!quiet) {
+          console.log(`[bunflare] ⚡ Loaded wrangler configuration from ${existsSync("wrangler.toml") ? "wrangler.toml" : existsSync("wrangler.json") ? "wrangler.json" : "wrangler.jsonc"}`);
+        }
       } else {
-        console.warn("[bunflare] ⚠️ No wrangler.toml/json/jsonc found. Infrastructure bindings might not be available.");
+        if (!quiet) {
+          console.warn("[bunflare] ⚠️ No wrangler.toml/json/jsonc found. Infrastructure bindings might not be available.");
+        }
       }
 
       // 2. Resolve shims (Removed legacy bun:sqlite shim resolution)

@@ -107,19 +107,63 @@ export interface CloudflareContext<E = CloudflareBindings> {
 }
 
 export interface BunflareConfig {
-  /** The name of your Cloudflare Worker. */
+  /** 
+   * The name of your Cloudflare Worker. 
+   * This is used for identification in the Cloudflare dashboard.
+   * 
+   * @example "my-awesome-worker"
+   */
   workerName?: string;
-  /** Cloudflare compatibility date (e.g., '2024-04-03'). */
+
+  /** 
+   * Cloudflare compatibility date. 
+   * Determines which version of the Cloudflare Workers runtime to use.
+   * 
+   * @example "2024-04-03"
+   */
   compatibilityDate?: string;
-  /** Your worker's entry point file path. @default "./src/index.ts" */
+
+  /** 
+   * Your worker's entry point file path. 
+   * This is the main file that will be bundled for Cloudflare.
+   * 
+   * @default "./src/index.ts"
+   * @example "./src/index.ts"
+   */
   entrypoint?: string;
-  /** The directory where the bundled worker will be placed. @default "./dist" */
+
+  /** 
+   * The directory where the bundled worker will be placed. 
+   * 
+   * @default "./dist"
+   * @example "./dist"
+   */
   outdir?: string;
-  /** The directory to watch for changes during development. @default "src" */
+
+  /** 
+   * The directory to watch for changes during development. 
+   * Any changes in this directory will trigger a rebuild.
+   * 
+   * @default "src"
+   * @example "src"
+   */
   watchDir?: string;
+
   /**
    * Enables or configures code minification.
    * Can be a boolean or an object for granular control.
+   * 
+   * @example 
+   * // Basic usage
+   * minify: true
+   * 
+   * @example 
+   * // Granular control
+   * minify: {
+   *   whitespace: true,
+   *   syntax: true,
+   *   identifiers: false
+   * }
    */
   minify?: boolean | {
     /** Minify whitespace. */
@@ -132,58 +176,145 @@ export interface BunflareConfig {
 
   /**
    * The intended execution environment target.
+   * - "browser": Standard ES modules for Cloudflare.
+   * - "bun": Optimized for Bun-specific features.
+   * - "node": Compatibility mode for Node.js.
+   * 
    * @default "browser"
+   * @example "browser"
    */
   target?: "browser" | "bun" | "node";
+
   /**
    * The type of sourcemap to generate.
-   * @default "linked" (in dev), "none" (in prod)
+   * - "none": No sourcemaps.
+   * - "linked": External .map file.
+   * - "inline": Inlined into the bundle.
+   * - "external": Separate file (not linked in comment).
+   * 
+   * @default "linked" (in dev), "none" (prod)
+   * @example "linked"
    */
   sourcemap?: "none" | "linked" | "inline" | "external";
+
   /**
-   * A list of function calls to remove from the bundle (e.g., ["console.log"]).
+   * A list of function calls to remove from the bundle.
+   * Useful for stripping development logs in production.
+   * 
    * @default ["console", "debugger"] (in prod)
+   * @example ["console.log", "myLogger.debug"]
    */
   drop?: string[];
-  /** Custom build-time constants for string replacement. */
+
+  /** 
+   * Global build-time constants for string replacement. 
+   * These are injected directly into your code.
+   * 
+   * @example
+   * define: {
+   *   "process.env.VERSION": JSON.stringify("1.2.3"),
+   *   "DEBUG": "true"
+   * }
+   */
   define?: Record<string, string>;
 
-  /** Modules or packages to exclude from the bundle. */
+  /** 
+   * Modules or packages to exclude from the bundle. 
+   * These will be treated as external peer dependencies.
+   * 
+   * @example ["node:path", "fsevents"]
+   */
   external?: string[];
-  /** Enable code splitting for projects with multiple entry points. */
+
+  /** 
+   * Enable code splitting for projects with multiple entry points. 
+   * 
+   * @default false
+   * @example true
+   */
   splitting?: boolean;
+
   /**
    * How to handle environment variables during bundling.
-   * Use a prefix (e.g., "PUBLIC_*") for selective inlining.
+   * - "inline": Inlines ALL environment variables.
+   * - "disable": Does not inline any variables.
+   * - "PREFIX_*": Only inlines variables starting with PREFIX_.
+   * 
+   * @example "PUBLIC_*"
    */
   env?: "inline" | "disable" | `${string}*`;
 
-  /** Whether to generate a metafile for bundle size analysis. @default true */
+  /** 
+   * Whether to generate a metafile for bundle size analysis. 
+   * Useful with tools like 'bundle-buddy'.
+   * 
+   * @default true
+   * @example true
+   */
   metafile?: boolean;
-  /** Optimization hints for complex library imports. */
+
+  /** 
+   * Optimization hints for complex library imports. 
+   * 
+   * @example ["zod", "date-fns"]
+   */
   optimizeImports?: string[];
 
-  /** Text to prepend to the generated worker bundle. */
+  /** 
+   * Text to prepend to the generated worker bundle. 
+   * Useful for license headers or polyfills.
+   * 
+   * @example "// (c) 2024 MyCompany"
+   */
   banner?: string;
-  /** Text to append to the generated worker bundle. */
+
+  /** 
+   * Text to append to the generated worker bundle. 
+   * 
+   * @example "// Built by bunflare"
+   */
   footer?: string;
-  /** Feature flags for the `bun:bundle` API. */
+
+  /** 
+   * Advanced feature flags for the `bun:bundle` API. 
+   */
   features?: string[];
+
   /**
    * Strategy for serving static assets.
-   * "binding" uses Cloudflare's standard ASSETS binding.
-   * "html-loader" is an experimental Bun-native alternative.
+   * - "binding": Uses Cloudflare's standard ASSETS binding (Static Site Hosting).
+   * - "html-loader": Experimental Bun-native alternative.
+   * 
    * @default "binding"
+   * @example "binding"
    */
   staticAssets?: "binding" | "html-loader";
 
   /**
-   * Status of serving static assets from this directory.
-   * "public/" is the default if not specified.
+   * The directory from which static assets are served.
+   * 
+   * @default "./public"
+   * @example "./public"
    */
   staticDir?: string;
-  /** Native Bun plugins to run during the build process. */
+
+  /** 
+   * Native Bun plugins to run during the build process. 
+   * 
+   * @example
+   * import tailwind from "bun-plugin-tailwind";
+   * plugins: [ tailwind ]
+   */
   plugins?: BunPlugin[];
-  /** Custom loaders for specific file extensions. */
+
+  /** 
+   * Custom loaders for specific file extensions. 
+   * 
+   * @example
+   * loader: {
+   *   ".txt": "text",
+   *   ".png": "file"
+   * }
+   */
   loader?: Record<string, Loader>;
 }

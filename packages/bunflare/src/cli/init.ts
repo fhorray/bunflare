@@ -8,14 +8,20 @@ export async function runInit() {
   const rootDir = process.cwd();
   console.log("[bunflare] 🚀 Initializing project configuration...");
 
-  // 1. Detect Project Name
+  // 1. Detect Project Info
   let projectName = "my-bun-worker";
+  let hasTailwind = false;
   const pkgPath = path.join(rootDir, "package.json");
   if (existsSync(pkgPath)) {
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
       if (pkg.name) projectName = pkg.name;
-    } catch (e) {}
+
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (deps["bun-plugin-tailwind"]) {
+        hasTailwind = true;
+      }
+    } catch (e) { }
   }
 
   // 2. Detect Entry Point
@@ -44,8 +50,9 @@ export async function runInit() {
       "main": "./dist/index.js",
       "compatibility_date": new Date().toISOString().split("T")[0],
       "compatibility_flags": ["nodejs_compat"],
-      "build": {
-        "command": "bunx --bun bunflare build"
+      "assets": {
+        "directory": "./dist",
+        "binding": "ASSETS"
       },
       "kv_namespaces": [
         {
@@ -68,6 +75,10 @@ export async function runInit() {
       ],
       "observability": {
         "enabled": true
+      },
+      "build": {
+        "command": "bun --bun run bunflare build -q",
+        // "watch_dir": "src"
       }
     };
 
@@ -77,36 +88,24 @@ export async function runInit() {
     console.log("  ⚠️ wrangler configuration already exists, skipping...");
   }
 
-  // 4. Generate cloudflare.config.ts
+  // 4. Generate bunflare.config.ts
   const configPath = path.join(rootDir, "bunflare.config.ts");
   const configPathAlt = path.join(rootDir, "cloudflare.config.ts");
-  
+
   if (!existsSync(configPath) && !existsSync(configPathAlt)) {
     const configContent = `import { defineConfig } from "bunflare/config";
-
+${hasTailwind ? 'import tailwind from "bun-plugin-tailwind";\n' : ""}
 export default defineConfig({
-  /** The entry point of your worker */
   entrypoint: "${detectedEntry}",
-  
-  /** Output directory for the bundle */
+${hasTailwind ? `
+  plugins: [
+    tailwind
+  ],
+` : ""}
   outdir: "./dist",
-
-  /** Execution target */
   target: "browser",
-
-  /** Global build constants */
-  define: {
-    "VERSION": JSON.stringify("1.0.0"),
-  },
-
-  /** External modules to exclude from bundling */
-  external: [],
-
-  /** Minification settings */
   minify: true,
-
-  /** Sourcemap generation */
-  sourmap: "none"
+  sourcemap: "none"
 });
 `;
     await Bun.write(configPath, configContent);
@@ -115,7 +114,36 @@ export default defineConfig({
     console.log("  ⚠️ bunflare.config.ts already exists, skipping...");
   }
 
+  // 5. Update package.json with dependencies and scripts
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+
+      // Add dependencies
+      pkg.devDependencies = pkg.devDependencies || {};
+      if (!pkg.devDependencies.bunflare && !pkg.dependencies?.bunflare) {
+        pkg.devDependencies.bunflare = "latest";
+      }
+      if (!pkg.devDependencies.wrangler && !pkg.dependencies?.wrangler) {
+        pkg.devDependencies.wrangler = "latest";
+      }
+
+      // Add scripts
+      pkg.scripts = pkg.scripts || {};
+      pkg.scripts["dev"] = "bunflare build && wrangler dev";
+      pkg.scripts["deploy"] = "bunflare build --production && wrangler deploy";
+      pkg.scripts["cf-typegen"] = "wrangler types --env-interface CloudflareBindings";
+
+      await Bun.write(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+      console.log("  ✅ Updated package.json with wrangler, bunflare, and scripts");
+    } catch (e) {
+      console.error("  ❌ Failed to update package.json:", e);
+    }
+  }
+
   console.log("\n[bunflare] ✨ Initialization complete!");
-  console.log("[bunflare] 💡 You can now run your project with: wrangler dev");
-  console.log("[bunflare] 💡 Run 'bun run cf-typegen' to generate binding types.");
+  console.log("[bunflare] 💡 Next steps:");
+  console.log("    1. Run 'bun install' to install dependencies.");
+  console.log("    2. Run 'bun run dev' to start development server.");
+  console.log("    3. Run 'bun run cf-typegen' to generate binding types.");
 }
