@@ -1,19 +1,46 @@
 import { loadConfig } from "../config";
 import path from "path";
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { Provisioner } from "./provisioner";
+import pc from "picocolors";
+import { log } from "./logger";
+import * as p from "@clack/prompts";
+import { scanDirectoryForBindings } from "./scanner";
 
 /**
- * Diagnostic tool to verify project configuration.
+ * Diagnostic tool to verify project configuration and health.
  */
-export async function runDoctor(options: { rootDir?: string } = {}) {
+export async function runDoctor(options: { rootDir?: string; fix?: boolean } = {}) {
   const rootDir = options.rootDir || process.cwd();
-  console.log(`[bunflare] 🩺 Running project diagnostics in ${rootDir}...\n`);
+  log.header("Bunflare Project Diagnostics", "yellow");
+  console.log(pc.dim(`  Checking health in: ${rootDir}\n`));
 
   let errors = 0;
   let warnings = 0;
 
-  // 1. Config Check
   const config = await loadConfig(rootDir);
+  
+  // Resolve source directory for scanning
+  const sourceDir = existsSync(path.join(rootDir, "src")) ? path.join(rootDir, "src") : rootDir;
+  const fluidResources = scanDirectoryForBindings(sourceDir);
+  const provisioner = new Provisioner(rootDir);
+
+  // 1. Authentication Check
+  const authResult = spawnSync("bunx", ["wrangler", "whoami"], {
+    stdio: "pipe",
+    encoding: "utf-8",
+    shell: true,
+  });
+  if (authResult.status !== 0 || authResult.stdout.includes("not logged in")) {
+    console.error(`  ❌ ${pc.red("Error")}: Not logged in to Cloudflare. Run ${pc.bold("wrangler login")}.`);
+    errors++;
+  } else {
+    const emailMatch = authResult.stdout.match(/email: "(.+?)"/);
+    console.log(`  ✅ ${pc.green("Auth")}: Connected as ${pc.cyan(emailMatch ? emailMatch[1] : "Cloudflare User")}`);
+  }
+
+  // 2. Configuration Files
   const configPath = existsSync(path.join(rootDir, "bunflare.config.ts")) 
     ? "bunflare.config.ts" 
     : existsSync(path.join(rootDir, "cloudflare.config.ts")) 
@@ -21,94 +48,133 @@ export async function runDoctor(options: { rootDir?: string } = {}) {
       : null;
 
   if (configPath) {
-    console.log(`  ✅ Found config: ${configPath}`);
+    console.log(`  ✅ ${pc.green("Config")}: Found ${pc.cyan(configPath)}`);
   } else {
-    console.warn(`  ⚠️ Warning: No bunflare.config.ts or cloudflare.config.ts found. Using defaults.`);
+    console.warn(`  ⚠️  ${pc.yellow("Warning")}: No bunflare.config.ts found. Using defaults.`);
     warnings++;
   }
 
-  // 2. Wrangler Check
+  // 3. Wrangler Configuration & Build Chain
   const wranglerPath = path.join(rootDir, "wrangler.jsonc");
   const wranglerTomlPath = path.join(rootDir, "wrangler.toml");
+  let wrangler: any = null;
   
   if (existsSync(wranglerPath) || existsSync(wranglerTomlPath)) {
     const isJsonc = existsSync(wranglerPath);
-    console.log(`  ✅ Found wrangler configuration: ${isJsonc ? "wrangler.jsonc" : "wrangler.toml"}`);
+    console.log(`  ✅ ${pc.green("Wrangler")}: Found ${pc.cyan(isJsonc ? "wrangler.jsonc" : "wrangler.toml")}`);
     
-    // Parse wrangler.jsonc (resiliently)
     if (isJsonc) {
       try {
         const content = readFileSync(wranglerPath, "utf-8");
-        // Robust comment and trailing comma stripping
         const cleanJson = content
-          .replace(/\/\/.*/g, "")             // Strip // line comments
-          .replace(/\/\*[\s\S]*?\*\//g, "")   // Strip /* */ block comments
-          .replace(/,\s*([\]}])/g, "$1");     // Strip trailing commas (Crucial!)
-        
-        const wrangler = JSON.parse(cleanJson);
+          .replace(/\/\/.*/g, "")
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/,\s*([\]}])/g, "$1");
+        wrangler = JSON.parse(cleanJson);
 
-        // Check main field
+        // Build Command Check
+        if (!wrangler.build || !wrangler.build.command || !wrangler.build.command.includes("bunflare build")) {
+          console.error(`  ❌ ${pc.red("Error")}: Missing build command in wrangler.jsonc.`);
+          console.log(pc.dim("     Expected: \"build\": { \"command\": \"bunflare build\" }"));
+          errors++;
+        } else {
+          console.log(`  ✅ ${pc.green("Build")}: Build chain correctly configured.`);
+        }
+
+        // Main Entry Check
         const outdir = config.outdir || "./dist";
-        const expectedMain = path.join(outdir, "index.js");
-        if (wrangler.main !== expectedMain && wrangler.main !== expectedMain.replace(/^\.\//, "")) {
-           console.error(`  ❌ Error: "main" in wrangler.jsonc should be "${expectedMain}" (currently: "${wrangler.main}")`);
+        const expectedMain = path.join(outdir, "index.js").replace(/^\.\//, "");
+        if (wrangler.main && wrangler.main.replace(/^\.\//, "") !== expectedMain) {
+           console.error(`  ❌ ${pc.red("Error")}: "main" should be "${expectedMain}" (currently: "${wrangler.main}")`);
            errors++;
-        } else {
-           console.log(`  ✅ "main" field correctly points to ${expectedMain}`);
         }
 
-        // Check assets
-        if (wrangler.assets?.directory !== outdir && wrangler.assets?.directory !== outdir.replace(/^\.\//, "")) {
-           console.error(`  ❌ Error: "assets.directory" in wrangler.jsonc should be "${outdir}" (currently: "${wrangler.assets?.directory}")`);
-           errors++;
-        } else {
-           console.log(`  ✅ "assets.directory" correctly points to ${outdir}`);
-        }
-
-        // Check node_compat
-        const flags = wrangler.compatibility_flags || [];
-        if (!flags.includes("nodejs_compat")) {
-           console.warn(`  ⚠️ Warning: "nodejs_compat" not found in compatibility_flags. Required for some node: imports.`);
+        // Node Compat Check
+        if (!(wrangler.compatibility_flags || []).includes("nodejs_compat")) {
+           console.warn(`  ⚠️  ${pc.yellow("Warning")}: "nodejs_compat" flag missing. Recommended for modern dependencies.`);
            warnings++;
         }
-
-        // Check compatibility_date
-        const dateStr = wrangler.compatibility_date;
-        if (dateStr) {
-            const year = parseInt(dateStr.split("-")[0]);
-            if (year < 2024) {
-               console.warn(`  ⚠️ Warning: compatibility_date is older than 2024. Update for full feature support.`);
-               warnings++;
-            }
-        } else {
-            console.error(`  ❌ Error: "compatibility_date" is missing in wrangler.jsonc`);
-            errors++;
-        }
-
       } catch (e) {
-        console.error(`  ❌ Error: Failed to parse wrangler.jsonc:`, e);
+        console.error(`  ❌ ${pc.red("Error")}: Failed to parse wrangler.jsonc.`);
         errors++;
       }
     }
   } else {
-    console.error(`  ❌ Error: wrangler.jsonc or wrangler.toml not found.`);
+    console.error(`  ❌ ${pc.red("Error")}: wrangler configuration not found.`);
     errors++;
   }
 
-  // 3. Output directory check
-  const outdir = config.outdir || "./dist";
-  if (!existsSync(path.join(rootDir, outdir))) {
-      console.warn(`  ⚠️ Warning: Output directory "${outdir}" not found. Run "bunflare build" first.`);
+  // 4. Infrastructure Synchronization Check
+  if (wrangler) {
+    const report = await provisioner.getInconsistencyReport();
+    if (report.length > 0) {
+      console.warn(`  ⚠️  ${pc.yellow("Warning")}: ${report.length} infrastructure resources are out of sync.`);
+      report.forEach(r => console.log(pc.dim(`     - ${r.binding} (${r.type}) missing or invalid ID`)));
       warnings++;
+
+      if (options.fix) {
+        console.log("");
+        await provisioner.provisionMissingResources();
+      }
+    } else {
+      console.log(`  ✅ ${pc.green("Infra")}: All infrastructure resources verified on Cloudflare.`);
+    }
   }
 
-  console.log(`\n[bunflare] 🏁 Diagnostic complete: ${errors} errors, ${warnings} warnings.`);
+  // 5. Package Dependencies
+  const pkgPath = path.join(rootDir, "package.json");
+  if (existsSync(pkgPath)) {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    
+    if (fluidResources.some((f: any) => f.type === "browser") && !deps["@cloudflare/puppeteer"]) {
+      console.error(`  ❌ ${pc.red("Error")}: "browser" used but "@cloudflare/puppeteer" not in package.json.`);
+      console.log(pc.dim("     Run: bun add @cloudflare/puppeteer"));
+      errors++;
+    }
+
+    if (fluidResources.some((f: any) => f.type === "container") && !deps["@cloudflare/containers"]) {
+      console.error(`  ❌ ${pc.red("Error")}: "containers" used but "@cloudflare/containers" not in package.json.`);
+      errors++;
+    }
+    
+    if (!deps["bunflare"]) {
+      console.error(`  ❌ ${pc.red("Error")}: "bunflare" not found in package.json dependencies.`);
+      errors++;
+    }
+
+    // 6. Browser Remote Bindings Check
+    if (fluidResources.some((f: any) => f.type === "browser")) {
+      const wranglerConfig = wrangler;
+      if (wranglerConfig && (!wranglerConfig.browser || wranglerConfig.browser.remote !== true)) {
+        console.warn(`\n  ⚠️  ${pc.yellow("Warning")}: Browser Rendering detected but Remote Binding is missing.`);
+        console.log(pc.dim("     Recommended: Add { \"remote\": true } to the \"browser\" section in wrangler.jsonc."));
+        
+        if (options.fix) {
+          const confirmed = await p.confirm({
+            message: `Enable remote browser rendering in wrangler.jsonc?`,
+            initialValue: true
+          });
+          if (confirmed) {
+            provisioner.configManager.addBinding("browser", { remote: true });
+            console.log(`  ✅ ${pc.green("Wrangler")}: Browser remote rendering enabled.`);
+          }
+        } else {
+          console.log(pc.dim("     This allows local develop with the Cloudflare Browser Rendering API without forcing slow --remote mode."));
+          warnings++;
+        }
+      }
+    }
+  }
+
+  console.log(`\n${pc.bold("[bunflare] 🏁 Diagnostic complete:")} ${errors} errors, ${warnings} warnings.`);
+  
   if (errors === 0 && warnings === 0) {
-      console.log(`[bunflare] ✨ Your project is in perfect health!`);
+    console.log(pc.green("✨ Your project is in perfect health!"));
   } else if (errors === 0) {
-      console.log(`[bunflare] 💡 Project is functional but could use some optimization.`);
+    console.log(pc.yellow("💡 Project is functional but has warnings. Recommended to fix before deployment."));
   } else {
-      console.error(`[bunflare] 🚨 Project has configuration errors that may break functionality.`);
-      process.exit(1);
+    console.log(pc.red("🚨 Project has critical configuration issues. Please fix errors above."));
+    process.exit(1);
   }
 }

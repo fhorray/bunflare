@@ -8,15 +8,12 @@ import MagicString from "magic-string";
 export function transformSource(source: string, filename: string = "index.tsx"): string {
   const s = new MagicString(source);
 
-  // 1. Parse with OXC (supports TS and JSX)
-  // Correct signature: parseSync(filename, source, options)
   const result = parseSync(filename, source, {
     sourceType: filename.endsWith(".tsx") || filename.endsWith(".jsx") ? "module" : "module",
   });
 
   if (result.errors.length > 0) {
-    // If it's a snippet for testing without full TS context, it might still parse or fail.
-    // We try to proceed but could log errors.
+    // Proceed with caution
   }
 
   const program = result.program;
@@ -26,9 +23,7 @@ export function transformSource(source: string, filename: string = "index.tsx"):
   // Helper to walk the AST
   function walk(node: any, visitor: (node: any, ancestors: any[]) => void, ancestors: any[] = []) {
     if (!node || typeof node !== "object") return;
-
     visitor(node, ancestors);
-
     const nextAncestors = [...ancestors, node];
     for (const key in node) {
       const child = node[key];
@@ -40,7 +35,7 @@ export function transformSource(source: string, filename: string = "index.tsx"):
     }
   }
 
-  // 1. First pass: Identify imports and remove bunflare/bun-helper ones
+  // 1. First pass: Identify imports
   program.body.forEach((node: any) => {
     if (node.type === "ImportDeclaration") {
       const sourcePath = node.source.value;
@@ -55,35 +50,29 @@ export function transformSource(source: string, filename: string = "index.tsx"):
             const importedName = spec.imported.name || spec.imported.value;
             bunflareImports.set(importedName, spec.local.name);
 
-            if (["durable", "workflow", "container"].includes(importedName)) {
+            if (["durable", "workflow", "container", "browser", "queue", "cron"].includes(importedName)) {
               const sSpan = spec.span || {};
               const sStart = spec.start ?? sSpan.start;
               const sEnd = spec.end ?? sSpan.end;
               if (sStart !== undefined && sEnd !== undefined) {
-                // Determine if we should also remove any following/leading commas
                 let removeStart = sStart;
                 let removeEnd = sEnd;
-
-                // Peek ahead for a comma
                 const nextCharIdx = source.slice(sEnd).search(/[,\n}]/);
                 if (nextCharIdx !== -1 && source[sEnd + nextCharIdx] === ",") {
-                  removeEnd = sEnd + nextCharIdx + 1; // remove including comma
+                  removeEnd = sEnd + nextCharIdx + 1;
                 } else if (idx > 0) {
-                  // Peek behind for a comma if we are not the first
                   const prevPart = source.slice(0, sStart);
                   const lastCommaIdx = prevPart.lastIndexOf(",");
                   if (lastCommaIdx !== -1 && !prevPart.slice(lastCommaIdx + 1).trim()) {
                     removeStart = lastCommaIdx;
                   }
                 }
-
                 s.remove(removeStart, removeEnd);
                 removedCount++;
               }
             }
           }
         });
-
         if (removedCount === node.specifiers.length) {
           if (nStart !== undefined && nEnd !== undefined) s.remove(nStart, nEnd);
         }
@@ -97,7 +86,6 @@ export function transformSource(source: string, filename: string = "index.tsx"):
               const sSpan = spec.span || {};
               const sStart = spec.start ?? sSpan.start;
               const sEnd = spec.end ?? sSpan.end;
-
               if (node.specifiers.length === 1) {
                 if (nStart !== undefined && nEnd !== undefined) s.remove(nStart, nEnd);
               } else {
@@ -110,7 +98,6 @@ export function transformSource(source: string, filename: string = "index.tsx"):
     }
   });
 
-  // Track all imports to enable lazy loading of routes
   const allImports = new Map<string, { source: string; imported: string }>();
   program.body.forEach((node: any) => {
     if (node.type === "ImportDeclaration" && node.source.value !== "bunflare" && node.source.value !== "bun") {
@@ -126,15 +113,10 @@ export function transformSource(source: string, filename: string = "index.tsx"):
     }
   });
 
-  // Helper to check if an identifier is shadowed by a local declaration in the current scope chain
   function isShadowed(name: string, ancestors: any[]): boolean {
-    // Walk up from most recent ancestor
     for (let i = ancestors.length - 1; i >= 0; i--) {
       const scopeNode = ancestors[i];
-      // Blocks, Programs, Functions, etc. can contain declarations
-      const declarations = scopeNode.body || (Array.isArray(scopeNode.body) ? scopeNode.body : []) || [];
       if (scopeNode.type === "BlockStatement" || scopeNode.type === "Program" || scopeNode.type === "FunctionDeclaration" || scopeNode.type === "ArrowFunctionExpression") {
-        // Simple scan for variable/function declarations in this block
         const body = Array.isArray(scopeNode.body) ? scopeNode.body : (scopeNode.body?.body || []);
         if (body.length > 0) {
           for (const item of body) {
@@ -146,16 +128,16 @@ export function transformSource(source: string, filename: string = "index.tsx"):
             }
           }
         }
-        // Also check function parameters
         if (scopeNode.params?.some((p: any) => p.name === name || p.left?.name === name)) return true;
       }
     }
     return false;
   }
 
-  // 2. Second pass: Transform calls
   let hasWorkflow = false;
   let hasContainer = false;
+  const queueConsumers: { name: string; options: string }[] = [];
+  const scheduledTasks: { name: string; schedule: string; options: string }[] = [];
 
   walk(program, (node, ancestors) => {
     if (node.type === "CallExpression") {
@@ -169,8 +151,11 @@ export function transformSource(source: string, filename: string = "index.tsx"):
       const isDurable = calleeName === (bunflareImports.get("durable") || "durable") && !isShadowed(calleeName, ancestors);
       const isWorkflow = calleeName === (bunflareImports.get("workflow") || "workflow") && !isShadowed(calleeName, ancestors);
       const isContainer = calleeName === (bunflareImports.get("container") || "container") && !isShadowed(calleeName, ancestors);
+      const isBrowser = calleeName === (bunflareImports.get("browser") || "browser") && !isShadowed(calleeName, ancestors);
+      const isQueue = calleeName === (bunflareImports.get("queue") || "queue") && !isShadowed(calleeName, ancestors);
+      const isCron = calleeName === (bunflareImports.get("cron") || "cron") && !isShadowed(calleeName, ancestors);
 
-      if (isDurable || isWorkflow || isContainer) {
+      if (isDurable || isWorkflow || isContainer || isBrowser || isQueue || isCron) {
         if (isWorkflow) hasWorkflow = true;
         if (isContainer) hasContainer = true;
 
@@ -180,17 +165,28 @@ export function transformSource(source: string, filename: string = "index.tsx"):
 
         if (variableDeclarator) {
           const name = variableDeclarator.id.name;
-          // OXC spans use .start and .end
           const arg = node.arguments[0];
           const aSpan = arg.span || {};
           const aStart = arg.start ?? aSpan.start;
           const aEnd = arg.end ?? aSpan.end;
-
           const options = source.slice(aStart, aEnd);
           const isExported = !!exportNamedDeclaration;
-
           let replacement = "";
-          if (isDurable) {
+
+          if (isQueue) {
+            queueConsumers.push({ name, options });
+            replacement = `const ${name} = ${options};`;
+          } else if (isCron) {
+            let schedule = "";
+            if (arg.type === "ObjectExpression") {
+              const schedProp = arg.properties.find((p: any) => p.key?.name === "schedule" || p.key?.value === "schedule");
+              if (schedProp && schedProp.value.type === "Literal") {
+                schedule = schedProp.value.value;
+              }
+            }
+            scheduledTasks.push({ name, schedule, options });
+            replacement = `const ${name} = ${options};`;
+          } else if (isDurable) {
             replacement = `class ${name} {
   constructor(state, env) {
     this.state = state;
@@ -202,13 +198,11 @@ export function transformSource(source: string, filename: string = "index.tsx"):
     if (this.$$handler.fetch) return this.$$handler.fetch(request, this.state, this.env);
     return new Response("Not Found", { status: 404 });
   }
-  // WebSocket 2.0: Bun-native Pub/Sub API for Durable Objects
   $$wrapWS(ws) {
     const self = this;
     return new Proxy(ws, {
       get(target, prop) {
         if (prop === "subscribe") return (topic) => self.state.acceptWebSocket(target, [topic]);
-        if (prop === "unsubscribe") return (topic) => { /* Cloudflare auto-manages tags, but we could add manual removal if needed */ };
         if (prop === "publish") return (topic, data) => self.publish(topic, data, target);
         const value = Reflect.get(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
@@ -245,7 +239,6 @@ export function transformSource(source: string, filename: string = "index.tsx"):
   defaultPort = 8080;
   sleepAfter = "10m";
   envVars = {};
-
   constructor(state, env) {
     super(state, env);
     const $$opts = ${options};
@@ -254,22 +247,53 @@ export function transformSource(source: string, filename: string = "index.tsx"):
     if ($$opts.sleepAfter) this.sleepAfter = $$opts.sleepAfter;
     if ($$opts.envVars) this.envVars = $$opts.envVars;
   }
-
   async onStart() {
-    if (typeof this.$$impl?.onStart === "function") {
-      return await this.$$impl.onStart.call(this);
-    }
+    if (typeof this.$$impl?.onStart === "function") return await this.$$impl.onStart.call(this);
   }
-
   async onStop() {
-    if (typeof this.$$impl?.onStop === "function") {
-      return await this.$$impl.onStop.call(this);
-    }
+    if (typeof this.$$impl?.onStop === "function") return await this.$$impl.onStop.call(this);
   }
-
   async onError(error) {
-    if (typeof this.$$impl?.onError === "function") {
-      return await this.$$impl.onError.call(this, error);
+    if (typeof this.$$impl?.onError === "function") return await this.$$impl.onError.call(this, error);
+  }
+}`;
+          } else if (isBrowser) {
+            replacement = `class ${name} {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.$$impl = ${options};
+  }
+  async fetch(request) {
+    let puppeteer;
+    try {
+      puppeteer = await import("@cloudflare/puppeteer");
+      if (puppeteer.default) puppeteer = puppeteer.default;
+    } catch (e) {
+      return new Response("Failed to load @cloudflare/puppeteer. Make sure it is installed.", { status: 500 });
+    }
+
+    if (!this.env.BROWSER) {
+      return new Response("Browser Rendering binding (BROWSER) not found in Durable Object environment. Ensure it is defined in wrangler.jsonc.", { status: 500 });
+    }
+
+    try {
+      const browser = await puppeteer.launch(this.env.BROWSER);
+      const page = await browser.newPage();
+      try {
+        if (typeof this.$$impl.run === "function") {
+          return await this.$$impl.run(page, request, this.env);
+        }
+        return new Response("Browser 'run' handler not found.", { status: 404 });
+      } catch (e) {
+        console.error("[Bunflare Browser] Execution error:", e);
+        return new Response(e.message, { status: 500 });
+      } finally {
+        await browser.close().catch(e => console.error("[Bunflare Browser] Close error:", e));
+      }
+    } catch (e) {
+      console.error("[Bunflare Browser] Launch error:", e);
+      return new Response("Puppeteer Launch Error: " + e.message, { status: 500 });
     }
   }
 }`;
@@ -283,14 +307,16 @@ export function transformSource(source: string, filename: string = "index.tsx"):
             if (targetNode.handled) {
               s.appendRight(tEnd, "\n" + (isExported ? "export " : "") + replacement);
             } else {
-              s.overwrite(tStart, tEnd, (isExported ? "export " : "") + replacement);
-              targetNode.handled = true;
+              if (tStart !== undefined && tEnd !== undefined) {
+                s.overwrite(tStart, tEnd, (isExported ? "export " : "") + replacement);
+                (targetNode as any).handled = true;
+              }
             }
           }
         }
       }
 
-      // -- Serve --
+      // Serve transformation
       const isServe = calleeName === (bunImports.get("serve") || "serve");
       if (isServe) {
         const exportDefaultDeclaration = ancestors.findLast((a: any) => a.type === "ExportDefaultDeclaration");
@@ -301,21 +327,17 @@ export function transformSource(source: string, filename: string = "index.tsx"):
         const aSpan = arg.span || {};
         const aStart = arg.start ?? aSpan.start;
         const aEnd = arg.end ?? aSpan.end;
-
         let options = source.slice(aStart, aEnd);
 
-        // --- AGGRESSIVE SPLITTING: Wrap route handlers in dynamic imports ---
         if (arg.type === "ObjectExpression") {
           const routesProp = arg.properties.find((p: any) => p.key?.name === "routes" || p.key?.value === "routes");
           if (routesProp && routesProp.value.type === "ObjectExpression") {
             const routesS = new MagicString(options);
             const routesOffset = aStart;
-
             routesProp.value.properties.forEach((prop: any) => {
               const pSpan = prop.value.span || {};
               const pStart = (prop.value.start ?? pSpan.start) - routesOffset;
               const pEnd = (prop.value.end ?? pSpan.end) - routesOffset;
-
               if (prop.value.type === "Identifier") {
                 const handlerName = prop.value.name;
                 const imp = allImports.get(handlerName);
@@ -323,7 +345,6 @@ export function transformSource(source: string, filename: string = "index.tsx"):
                   routesS.overwrite(pStart, pEnd, `async (req, srv, ctx) => (await import("${imp.source}")).${imp.imported}(req, srv, ctx)`);
                 }
               } else if (prop.value.type === "MemberExpression") {
-                // Support H.Home where H is a namespace import
                 const objectName = prop.value.object?.name;
                 const propertyName = prop.value.property?.name || prop.value.property?.value;
                 const imp = allImports.get(objectName);
@@ -337,6 +358,27 @@ export function transformSource(source: string, filename: string = "index.tsx"):
         }
 
         let serverVarName = variableDeclarator?.id?.name || "";
+        
+        let handlerAdditions = "";
+        if (queueConsumers.length > 0) {
+          handlerAdditions += `
+  async queue(batch, env, ctx) {
+    switch (batch.queue) {
+      ${queueConsumers.map(q => `case "${q.name.toUpperCase()}":
+        if (typeof ${q.name}.process === "function") return await ${q.name}.process(batch.messages, env);
+        break;`).join("\n      ")}
+    }
+  },`;
+        }
+
+        if (scheduledTasks.length > 0) {
+          handlerAdditions += `
+  async scheduled(event, env, ctx) {
+    ${scheduledTasks.map(t => `if (event.cron === "${t.schedule}") {
+      if (typeof ${t.name}.run === "function") return await ${t.name}.run(event, env);
+    }`).join("\n    ")}
+  },`;
+        }
 
         const replacement = `
 const $$options = ${options};
@@ -351,7 +393,7 @@ const $$routes = $$options.routes ? Object.entries($$options.routes).sort(([a], 
   if (scoreA !== scoreB) return scoreB - scoreA;
   return b.length - a.length;
 }).map(([path, handler]) => {
-  const patternPath = path.replace(/\\*$/, ":any*");
+  const patternPath = path.endsWith("*") ? path.replace(new RegExp("[*]$"), ":any*") : path;
   return {
     pattern: new URLPattern({ pathname: patternPath }),
     handler
@@ -385,7 +427,6 @@ const $$server = {
         }
       }
     };
-
     server.accept();
     if ($$options.websocket?.open) $$options.websocket.open(ws);
     server.addEventListener("message", (e) => {
@@ -398,7 +439,6 @@ const $$server = {
     server.addEventListener("error", (e) => {
       if ($$options.websocket?.error) $$options.websocket.error(ws, e.error || e);
     });
-
     globalThis.$$upgradeResponse = new Response(null, {
       status: 101,
       webSocket: client,
@@ -423,12 +463,8 @@ const $$worker = {
       ctx: ctx || { waitUntil: () => {}, passThroughOnException: () => {} }
     });
     globalThis.$$upgradeResponse = null;
-
     const $$isDev = typeof process !== "undefined" && (process.env.NODE_ENV === "development" || $$options.development);
-
     if ($$isDev && env?.ASSETS) {
-      // In development, we allow routes to take priority for HTML requests 
-      // to ensure Wrangler can inject live-reload scripts into the responses.
       const isHTMLRequest = request.headers.get("accept")?.includes("text/html");
       if (!isHTMLRequest) {
         const assetResponse = await env.ASSETS.fetch(request.clone());
@@ -438,7 +474,6 @@ const $$worker = {
       const assetResponse = await env.ASSETS.fetch(request.clone());
       if (assetResponse.status !== 404) return assetResponse;
     }
-
     if ($$routes.length > 0) {
       const url = new URL(request.url);
       for (const { pattern, handler } of $$routes) {
@@ -454,7 +489,9 @@ const $$worker = {
             }
           });
           let result;
-          if (handler instanceof Response || typeof handler === "string") {
+          // More robust Response check
+          const isResponse = handler && (typeof handler === "object" && ("status" in handler || handler.constructor?.name === "Response"));
+          if (isResponse || typeof handler === "string") {
             result = typeof handler === "string" ? new Response(handler, { headers: { "Content-Type": "text/html" } }) : handler;
           } else if (typeof handler === "object") {
             const method = request.method.toUpperCase();
@@ -468,7 +505,6 @@ const $$worker = {
         }
       }
     }
-
     if ($$options.fetch) {
       const result = await $$options.fetch(request, $$server, ctx);
       if (globalThis.$$upgradeResponse) return globalThis.$$upgradeResponse;
@@ -488,7 +524,7 @@ ${serverVarName ? `const ${serverVarName} = {
 
 export default {
   ...$$options,
-  fetch: $$worker.fetch
+  fetch: $$worker.fetch,${handlerAdditions}
 };`;
 
         const targetNode = exportDefaultDeclaration || variableDeclaration || node;
@@ -502,22 +538,22 @@ export default {
     }
   });
 
-  // Prefixes
   let prefix = "";
   if (!source.includes("setBunflareContext")) {
     prefix += `globalThis.__BUNFLARE_RUNTIME__ = true;\nimport { setBunflareContext } from "bunflare";\n`;
   }
-  if (hasWorkflow && !source.includes("WorkflowEntrypoint")) {
-    prefix += `import { WorkflowEntrypoint } from "cloudflare:workers";\n`;
+  if (hasWorkflow) {
+    const hasImport = source.match(/import\s+{[^}]*WorkflowEntrypoint[^}]*}\s+from\s+["']cloudflare:workers["']/);
+    if (!hasImport) prefix += `import { WorkflowEntrypoint } from "cloudflare:workers";\n`;
   }
-  if (hasContainer && !source.includes("Container")) {
-    prefix += `import { Container } from "@cloudflare/containers";\n`;
+  if (hasContainer) {
+    const hasImport = source.match(/import\s+{[^}]*Container[^}]*}\s+from\s+["']@cloudflare\/containers["']/);
+    if (!hasImport) prefix += `import { Container } from "@cloudflare/containers";\n`;
   }
 
   return prefix + s.toString();
 }
 
-// Compatibility exports
 export function transformDurables(source: string) { return transformSource(source); }
 export function transformWorkflows(source: string) { return transformSource(source); }
 export function transformContainers(source: string) { return transformSource(source); }

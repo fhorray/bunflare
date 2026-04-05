@@ -1,0 +1,1 @@
+export { withMetadata } from "./seo";

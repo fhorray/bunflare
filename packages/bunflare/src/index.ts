@@ -1,8 +1,26 @@
 import "./runtime/safety";
 export { getCloudflareContext, setCloudflareContext, getBunflareContext, setBunflareContext, getBunCloudflareContext } from "./runtime/context";
-import type { WorkflowEvent, WorkflowStep, WorkflowBinding, ContainerBinding, ContainerOptions } from "./types";
-export type { CloudflareEnv, CloudflareBindings, CloudflareContext, BunflareConfig, WorkflowEvent, WorkflowStep, WorkflowBinding, WorkflowInstance, ContainerBinding, ContainerInstance, ContainerOptions, DurableObjectState } from "./types";
+export { tasks } from "./tasks";
+export { cache } from "./cache";
+import type { WorkflowEvent, WorkflowStep, WorkflowBinding, ContainerBinding, ContainerOptions, MessageBatch, ScheduledEvent } from "./types";
+export type { CloudflareEnv, CloudflareBindings, CloudflareContext, BunflareConfig, WorkflowEvent, WorkflowStep, WorkflowBinding, WorkflowInstance, ContainerBinding, ContainerInstance, ContainerOptions, DurableObjectState, MessageBatch, Message, ScheduledEvent } from "./types";
 export { defineConfig, loadConfig, loadWranglerConfig } from "./config";
+
+/**
+ * Helper to define a Cloudflare Browser Rendering instance.
+ * This is transformed into a standard Cloudflare class by the bunflare build process.
+ * 
+ * @example
+ * export const MyPDF = browser({
+ *   async run(page, req, env) {
+ *     await page.goto("...");
+ *     return new Response(await page.pdf());
+ *   }
+ * });
+ */
+export function browser<T extends { run: (page: any, req: Request, env: any) => Promise<Response>; [key: string]: any }>(options: T): T {
+  return options;
+}
 
 /**
  * Helper to define a Cloudflare Workflow with a fluid, Bun-style API.
@@ -54,5 +72,52 @@ export function container<T extends ContainerOptions>(options: T): ContainerBind
  * });
  */
 export function durable<T extends { fetch?: (request: any, state: any, env: any) => any; [key: string]: any }>(options: T): T {
+  return options;
+}
+/**
+ * Helper to define a Cloudflare Queue Consumer with a fluid, Bun-style API.
+ * 
+ * @example
+ * export const EmailQueue = queue({
+ *   async process(messages, env) {
+ *     for (const msg of messages) {
+ *       await sendEmail(msg.body);
+ *       msg.ack();
+ *     }
+ *   }
+ * });
+ */
+export function queue<T = any, Env = any>(options: {
+  /** Batch processing configuration. */
+  batchSize?: number;
+  maxRetries?: number;
+  maxBatchTimeout?: number;
+  /** The main processing handler. */
+  process: (messages: MessageBatch<T>["messages"], env: Env) => Promise<void> | void;
+  /** Any other methods or properties. */
+  [key: string]: any;
+}): any {
+  return options;
+}
+
+/**
+ * Helper to define a Cloudflare Scheduled Task (Cron) with a fluid, Bun-style API.
+ * 
+ * @example
+ * export const nightlyCleanup = cron({
+ *   schedule: "0 0 * * *",
+ *   async run(event, env) {
+ *     await cleanup(env.DB);
+ *   }
+ * });
+ */
+export function cron<Env = any>(options: {
+  /** The CRON schedule (e.g., "0 0 * * *"). */
+  schedule: string;
+  /** The execution handler. */
+  run: (event: ScheduledEvent, env: Env) => Promise<void> | void;
+  /** Any other methods or properties. */
+  [key: string]: any;
+}): any {
   return options;
 }

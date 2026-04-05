@@ -1,83 +1,136 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "playground-worker",
-	"main": "dist/index.js",
-	"compatibility_date": "2026-04-03",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"vars": {
-		"APP_NAME": "Playground App from Bun Environment"
-	},
-	"assets": {
-		"directory": "./dist",
-		"binding": "ASSETS"
-	},
-	"kv_namespaces": [
-		{
-			"binding": "REDIS",
-			"id": "4288dcaee2f043c9942d6a785c432803"
-		}
-	],
-	"r2_buckets": [
-		{
-			"binding": "BUCKET",
-			"bucket_name": "assets-bucket"
-		}
-	],
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "DB",
-			"database_id": "9d2496e9-b86c-431b-9da0-69f1cdcdf4c0"
-		}
-	],
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "COUNTER",
-				"class_name": "Counter"
-			},
-			{
-				"name": "IMAGE_PROCESSOR",
-				"class_name": "ImageProcessor"
-			},
-			{
-				"name": "CHAT_HUB",
-				"class_name": "ChatHub"
-			}
-		]
-	},
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_classes": ["Counter"]
-		},
-		{
-			"tag": "v2",
-			"new_sqlite_classes": ["ImageProcessor"]
-		},
-		{
-			"tag": "v3",
-			"new_classes": ["ChatHub"]
-		}
-	],
-	"containers": [
-		{
-			"class_name": "ImageProcessor",
-			"image": "./Dockerfile",
-			"max_instances": 1
-		}
-	],
-	"workflows": [
-		{
-			"name": "processing-workflow",
-			"binding": "PROCESSING_WORKFLOW",
-			"class_name": "ProcessingWorkflow"
-		}
-	],
-	// "build": {
-	// 	"command": "bun --bun run bunflare build",
-	// 	"watch_dir": "src"
-	// }
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "playground-worker",
+  "main": "dist/index.js",
+  "build": {
+    "command": "bunflare build -q",
+    "watch_dir": "src"
+  },
+  "compatibility_date": "2026-04-03",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "APP_NAME": "Playground App from Bun Environment"
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "browser": {
+    "binding": "BROWSER",
+    "remote": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "REDIS",
+      "id": "4288dcaee2f043c9942d6a785c432803"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "assets-bucket"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "DB",
+      "database_id": "e7e50f43-1a37-42ed-ba31-ddf078955c92"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COUNTER",
+        "class_name": "Counter"
+      },
+      {
+        "name": "IMAGE_PROCESSOR",
+        "class_name": "ImageProcessor"
+      },
+      {
+        "name": "CHAT_HUB",
+        "class_name": "ChatHub"
+      },
+      {
+        "name": "PDFMAKER",
+        "class_name": "PDFMaker"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": [
+        "Counter"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "ImageProcessor"
+      ]
+    },
+    {
+      "tag": "v3",
+      "new_classes": [
+        "ChatHub"
+      ]
+    },
+    {
+      "tag": "v4",
+      "new_classes": [
+        "PDFMaker"
+      ]
+    }
+  ],
+  "containers": [
+    {
+      "class_name": "ImageProcessor",
+      "image": "./Dockerfile",
+      "max_instances": 1
+    }
+  ],
+  "workflows": [
+    {
+      "name": "processing-workflow",
+      "binding": "PROCESSING_WORKFLOW",
+      "class_name": "ProcessingWorkflow"
+    },
+    {
+      "name": "processingworkflow",
+      "binding": "PROCESSINGWORKFLOW",
+      "class_name": "ProcessingWorkflow"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "TEST_QUEUE",
+        "queue": "test-queue"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "testqueue"
+      }
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "*/1 * * * *"
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "AUTH_LIMITER",
+      "namespace_id": "7419",
+      "simple": {
+        "limit": 100,
+        "period": 60
+      }
+    }
+  ]
 }

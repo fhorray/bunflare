@@ -4,16 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
-    "dev:cf": "wrangler dev --port 3104 --inspector-port 9204",
+    "dev": "bunflare dev -q",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun --bun run bunflare build",
-    "deploy": "bun run build --production && wrangler deploy",
+    "deploy": "bunflare deploy",
     "preview": "wrangler preview",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.2.2",
+    "@cloudflare/puppeteer": "^1.0.6",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.3",

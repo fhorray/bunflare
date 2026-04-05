@@ -4,7 +4,6 @@ import {
   Database,
   HardDrive,
   Zap,
-  ChevronRight,
   Globe,
   Wifi,
   Cpu,
@@ -12,6 +11,10 @@ import {
   Terminal,
   ExternalLink,
   Box,
+  Search,
+  Monitor,
+  Timer,
+  Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Tab } from '../App';
@@ -36,13 +39,9 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
       icon: Database,
       color: 'text-blue-500',
     },
-    {
-      id: 'storage',
-      label: 'Storage (R2)',
-      icon: HardDrive,
-      color: 'text-orange-500',
-    },
-    { id: 'cache', label: 'Cache (KV)', icon: Zap, color: 'text-pink-500' },
+    { id: 'storage', label: 'Storage (R2)', icon: HardDrive, color: 'text-orange-500' },
+    { id: 'edge', label: 'Edge & Cache', icon: Zap, color: 'text-yellow-500' },
+    { id: 'cache', label: 'Cache (KV)', icon: Activity, color: 'text-pink-500' },
     { id: 'routing', label: 'Routing', icon: Globe, color: 'text-indigo-500' },
     {
       id: 'realtime',
@@ -63,10 +62,34 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
       color: 'text-amber-500',
     },
     {
-      id: 'compute',
-      label: 'Compute (CR)',
+      id: 'containers',
+      label: 'Containers',
       icon: Box,
       color: 'text-orange-500',
+    },
+    {
+      id: 'queues',
+      label: 'Queues',
+      icon: Timer,
+      color: 'text-rose-500',
+    },
+    {
+      id: 'crons',
+      label: 'Crons',
+      icon: Calendar,
+      color: 'text-emerald-500',
+    },
+    {
+      id: 'seo',
+      label: 'SEO & Utils',
+      icon: Search,
+      color: 'text-cyan-500',
+    },
+    {
+      id: 'browser',
+      label: 'Browser (Puppeteer)',
+      icon: Monitor,
+      color: 'text-pink-600',
     },
   ] as const;
 

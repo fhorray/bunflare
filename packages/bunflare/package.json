@@ -54,6 +54,14 @@
     },
     "./html": {
       "types": "./html.d.ts"
+    },
+    "./utils": {
+      "import": "./src/utils/index.ts",
+      "types": "./src/utils/index.ts"
+    },
+    "./edge": {
+      "import": "./src/edge/index.ts",
+      "types": "./src/edge/index.ts"
     }
   },
   "files": [

@@ -1,8 +1,11 @@
 import { Hono } from "hono";
 import { serve } from "bun";
-import { getCloudflareContext, durable, workflow, container } from "bunflare";
-import type { WorkflowEvent, WorkflowStep, CloudflareBindings } from "bunflare";
+import { getCloudflareContext, durable, workflow, container, browser, tasks, queue, cron, cache } from "bunflare";
+import { rateLimit, flags } from "bunflare/edge";
+import { withMetadata } from "bunflare/utils";
+import type { WorkflowEvent, WorkflowStep, CloudflareBindings, MessageBatch } from "bunflare";
 import index from "./index.html";
+
 
 // 1. Define a Simple Durable Object using the new fluid API
 export const Counter = durable({
@@ -23,150 +26,188 @@ export const ImageProcessor = container({
   }
 });
 
-// 3. Define a Chat Hub Durable Object for multi-user WebSockets
-export const ChatHub = durable({
-  async fetch(request: Request, state: DurableObjectState, env: CloudflareBindings) {
-    const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
-
-    // Using WebSocket 2.0 API: ws.subscribe()
-    server.serialize = () => ({});
-    server.subscribe("chat");
-
-    return new Response(null, { status: 101, webSocket: client });
-  },
-
-  // Handlers for Hibernatable WebSockets (High Efficiency)
-  async webSocketMessage(ws: WebSocket, message: string) {
-    // Using WebSocket 2.0 API: ws.publish()
-    // Broadcast to everyone in the "chat" topic (excluding sender)
-    ws.publish("chat", message);
-  },
-
-  async webSocketClose(ws: WebSocket) {
-    console.log("Chat connection closed");
-  }
-});
-
-// 2. Define a Simple Workflow using the new fluid API
-export const ProcessingWorkflow = workflow({
-  async run(event: WorkflowEvent<{ triggeredAt: string }>, step: WorkflowStep, env: CloudflareBindings) {
-    const result = await step.do("process data", async () => {
-      return { status: "processed", at: new Date().toISOString() };
+// 3. Define a Browser Rendering instance (transformed into Class)
+export const PDFMaker = browser({
+  async run(page: any, req: Request, env: CloudflareBindings) {
+    const url = new URL(req.url).searchParams.get("url") || "https://google.com";
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.goto(url, { waitUntil: 'networkidle0' });
+    const pdf = await page.pdf({ 
+      format: 'A4', 
+      printBackground: true,
+      margin: { top: '1cm', right: '1cm', bottom: '1cm', left: '1cm' }
     });
-
-    await step.sleep("wait a bit", "5 seconds");
-
-    await step.do("log result", async () => {
-      console.log("Workflow finished:", result);
-    });
-
-    // ─── FINAL STATUS UPDATE ───────────────────────────────────────
-    // This ensures the dashboard sees "success" instead of "running"
-    // after the page is reloaded.
-    await step.do("update history", async () => {
-      if (env.DB) {
-        await env.DB.prepare("UPDATE workflow_history SET status = ?, endTime = ? WHERE id = ?")
-          .bind("success", new Date().toISOString(), event.instanceId)
-          .run();
+    return new Response(pdf, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="bunflare-report.pdf"`
       }
     });
   }
 });
 
-const app = new Hono<{
-  Bindings: CloudflareBindings;
-}>();
-
-// ─── Routes: Hello World ─────────────────────────────────────────────
-app.get("/api/hello", (c) => {
-  return c.json({ message: "Hello, world!", appName: c.env.APP_NAME, method: "GET" });
-});
-
-app.get("/api/do/counter", async (c) => {
-  const { env } = getCloudflareContext();
-  if (!env.COUNTER) return c.json({ error: "COUNTER binding not found" }, { status: 500 });
-  const id = env.COUNTER.idFromName("global");
-  const obj = env.COUNTER.get(id);
-  return obj.fetch(c.req.raw);
-});
-
-app.post("/api/workflow/start", async (c) => {
-  const { env } = getCloudflareContext();
-  if (!env.PROCESSING_WORKFLOW) return c.json({ error: "Workflow binding missing" }, { status: 500 });
-
-  const instance = await env.PROCESSING_WORKFLOW.create({
-    params: { triggeredAt: new Date().toISOString() }
-  });
-
-  // Log to D1 history for persistence in the UI
-  if (env.DB) {
-    try {
-      await env.DB.prepare("CREATE TABLE IF NOT EXISTS workflow_history (id TEXT PRIMARY KEY, status TEXT, startTime TEXT, endTime TEXT, payload TEXT)").run();
-      await env.DB.prepare("INSERT INTO workflow_history (id, status, startTime, payload) VALUES (?, ?, ?, ?)")
-        .bind(instance.id, "running", new Date().toISOString(), JSON.stringify({ triggeredAt: new Date().toISOString() }))
-        .run();
-    } catch (e) {
-      console.error("Failed to log workflow start to D1:", e);
+// 4. Message Queue Consumer
+export const TestQueue = queue({
+  async process(messages: MessageBatch["messages"], env: CloudflareBindings) {
+    for (const msg of messages) {
+      console.log(`[Queue] Processing message ${msg.id}:`, msg.body);
+      if (env.KV) {
+        const logs = JSON.parse((await env.KV.get("queue_logs")) || "[]");
+        logs.unshift({ id: msg.id, body: msg.body, time: new Date().toISOString(), status: "processed" });
+        await env.KV.put("queue_logs", JSON.stringify(logs.slice(0, 20)));
+      }
+      msg.ack();
     }
   }
+});
 
+// 5. Scheduled Task (Cron)
+export const CleanupTask = cron({
+  schedule: "*/1 * * * *", 
+  async run(event: any, env: CloudflareBindings) {
+    console.log("[Cron] Cleanup task triggered");
+    if (env.KV) await env.KV.put("last_cron_run", new Date().toISOString());
+  }
+});
+
+// 6. Durable Object for multi-user WebSockets
+export const ChatHub = durable({
+  async fetch(request: Request, state: DurableObjectState, env: CloudflareBindings) {
+    const pair = new WebSocketPair();
+    const server = pair[1];
+    (server as any).serialize = () => ({});
+    (server as any).subscribe("chat");
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  },
+  async webSocketMessage(ws: WebSocket, message: string) {
+    ws.publish("chat", message);
+  }
+});
+
+// 7. Processing Workflow
+export const ProcessingWorkflow = workflow({
+  async run(event: WorkflowEvent<{ triggeredAt: string }>, step: WorkflowStep, env: CloudflareBindings) {
+    const result = await step.do("process data", async () => ({ status: "processed", at: new Date().toISOString() }));
+    await step.sleep("wait a bit", "5 seconds");
+    await step.do("update history", async () => {
+      if (env.DB) {
+        await env.DB.prepare("UPDATE workflow_history SET status = ?, endTime = ? WHERE id = ?")
+          .bind("success", new Date().toISOString(), event.instanceId).run();
+      }
+    });
+  }
+});
+
+const app = new Hono<{ Bindings: CloudflareBindings }>();
+
+// ─── Edge Utilities Examples ───
+
+// Rate Limiter: 5 requests per minute
+const authLimiter = rateLimit({
+  binding: "AUTH_LIMITER",
+  limit: 5,
+  window: 60
+});
+
+app.post("/api/auth/login", authLimiter, async (c) => {
+  return c.json({ success: true, message: "Login successful (Rate limited)" });
+});
+
+// Smart Cache: Leaderboard
+app.get("/api/cache/leaderboard", async (c) => {
+  const data = await cache.getOrSet("global_leaderboard", { ttl: 30 }, async () => {
+    // Simulate slow database query
+    await new Promise(r => setTimeout(r, 1000));
+    return [
+      { name: "Alice", score: 9500 },
+      { name: "Bob", score: 8200 },
+      { name: "Charlie", score: 7100 }
+    ];
+  });
+  return c.json({ data, source: (c.req.raw as any).cf?.cacheStatus || "miss" });
+});
+
+// Feature Flags
+app.get("/api/edge/banner", async (c) => {
+  const userId = c.req.query("userId") || "anonymous";
+  const showNewBanner = await flags.evaluate("new_homepage_banner", userId);
   return c.json({
-    id: instance.id,
-    status: "Instance created"
+    feature: "new_homepage_banner",
+    enabled: showNewBanner,
+    content: showNewBanner ? "✨ Welcome to the NEW experience!" : "Hello, welcome back."
   });
 });
 
-app.get("/api/workflow/history", async (c) => {
+app.post("/api/edge/flags/toggle", async (c) => {
+  const { name, enabled } = await c.req.json();
   const { env } = getCloudflareContext();
-  if (!env.DB) return c.json({ history: [] });
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS workflow_history (id TEXT PRIMARY KEY, status TEXT, startTime TEXT, endTime TEXT, payload TEXT)").run();
-  const { results } = await env.DB.prepare("SELECT * FROM workflow_history ORDER BY startTime DESC LIMIT 10").all();
-
-  // Map D1 results to what the UI expects
-  const history = results.map((r: any) => ({
-    id: r.id,
-    status: r.status,
-    startTime: new Date(r.startTime).toLocaleTimeString(),
-    endTime: r.endTime ? new Date(r.endTime).toLocaleTimeString() : undefined,
-    steps: [
-      { title: 'Initialization', status: 'completed' },
-      { title: 'Execution', status: r.status === 'running' ? 'pending' : 'completed' },
-      { title: 'Durable Sleep', status: r.status === 'running' ? 'pending' : 'completed' },
-      { title: 'Success', status: r.status === 'success' ? 'completed' : 'pending' },
-    ]
-  }));
-
-  return c.json({ history });
+  if (!env.FLAGS_KV) return c.json({ error: "FLAGS_KV binding missing" }, 500);
+  
+  const current = JSON.parse((await env.FLAGS_KV.get("active_flags")) || "{}");
+  current[name] = enabled;
+  await env.FLAGS_KV.put("active_flags", JSON.stringify(current));
+  
+  return c.json({ success: true, flags: current });
 });
 
-app.get("/api/container/test", async (c) => {
+// ─── Queue Endpoints ───
+app.post("/api/queue/send", async (c) => {
+  const { body } = await c.req.json();
   const { env } = getCloudflareContext();
-  if (!env.IMAGE_PROCESSOR) return c.json({ error: "Container binding missing" }, { status: 500 });
-  const instance = env.IMAGE_PROCESSOR.getByName("test-instance");
-
-  // Rewrite the request to the container's root
-  const url = new URL(c.req.url);
-  url.pathname = "/";
-  const proxyReq = new Request(url.toString(), c.req.raw);
-
-  return instance.fetch(proxyReq);
+  if (!env.TEST_QUEUE) return c.json({ error: "TEST_QUEUE binding missing (Did you run bunflare doctor --fix?)" }, 500);
+  
+  await env.TEST_QUEUE.send(body);
+  return c.json({ success: true, message: "Enqueued" });
 });
 
-app.put("/api/hello", (c) => {
-  return c.json({ message: "Hello, world!", method: "PUT" });
+app.get("/api/queue/logs", async (c) => {
+  const { env } = getCloudflareContext();
+  if (!env.KV) return c.json({ logs: [] });
+  const logs = JSON.parse((await env.KV.get("queue_logs")) || "[]");
+  return c.json({ logs });
 });
 
-app.get("/api/hello/:name", (c) => {
-  const name = c.req.param("name");
-  return c.json({ message: `Hello, ${name}!` });
+app.post("/api/queue/mock", async (c) => {
+  const { env, ctx } = getCloudflareContext();
+  const batch = [
+    { id: "mock-" + Math.random().toString(36).substring(7), body: { mock: true, type: "manual_trigger", time: new Date().toISOString() }, ack: () => {}, retry: () => {} }
+  ] as any;
+  
+  if (ctx.waitUntil) {
+    ctx.waitUntil(TestQueue.process(batch, env));
+  } else {
+    await TestQueue.process(batch, env);
+  }
+  return c.json({ success: true, message: "Mock batch processed" });
 });
 
-// ─── Routes: D1 Database (Native Cloudflare D1) ──────────
+app.post("/api/cron/mock", async (c) => {
+  const { env, ctx } = getCloudflareContext();
+  const event = { cron: "*/1 * * * *", scheduledTime: Date.now() };
+  
+  if (ctx.waitUntil) {
+    ctx.waitUntil(CleanupTask.run(event as any, env));
+  } else {
+    await CleanupTask.run(event as any, env);
+  }
+  return c.json({ success: true, message: "Mock cron triggered" });
+});
+
+// ─── Standard Routes ───
+app.get("/api/hello", (c) => c.json({ message: "Hello, world!", appName: c.env.APP_NAME }));
+
+app.get("/api/browser/pdf", async (c) => {
+  const { env } = getCloudflareContext();
+  if (env.PDFMAKER) {
+    const id = env.PDFMAKER.idFromName("global");
+    return env.PDFMAKER.get(id).fetch(c.req.raw);
+  }
+  return c.json({ error: "PDFMAKER DO missing" }, 500);
+});
+
 app.get("/api/db", async (c) => {
   const { env } = getCloudflareContext();
-  if (!env.DB) return c.json({ error: "DB binding missing" }, { status: 500 });
+  if (!env.DB) return c.json({ error: "DB missing" }, 500);
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)").run();
   const { results } = await env.DB.prepare("SELECT * FROM users").all();
   return c.json({ users: results });
@@ -174,172 +215,23 @@ app.get("/api/db", async (c) => {
 
 app.post("/api/db", async (c) => {
   const { env } = getCloudflareContext();
-  const body = await c.req.json() as { name?: string };
-  const name = body.name || `User ${Math.floor(Math.random() * 1000)}`;
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)").run();
-  await env.DB.prepare("INSERT INTO users (name) VALUES (?)").bind(name).run();
-  return c.json({ message: "User inserted successfully" });
+  const body = await c.req.json();
+  await env.DB.prepare("INSERT INTO users (name) VALUES (?)").bind(body.name || "Unknown").run();
+  return c.json({ success: true });
 });
 
-app.post("/api/db/delete", async (c) => {
-  const { env } = getCloudflareContext();
-  const body = await c.req.json() as { id?: number };
-  const id = body.id;
-  if (!id) return c.json({ error: "Missing ID" }, { status: 400 });
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)").run();
-  await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
-  return c.json({ message: "User deleted successfully" });
-});
-
-// ─── Routes: R2 Asset Manager (Native Cloudflare R2) ────────────────
-app.get("/api/storage/list", async (c) => {
-  try {
-    const { env } = getCloudflareContext();
-    const prefix = c.req.query("prefix") || "";
-    const delimiter = c.req.query("delimiter") || "/";
-
-    const list = await env.BUCKET.list({ prefix, delimiter });
-
-    return c.json({
-      objects: (list.objects || []).map((o: any) => ({
-        key: o.key,
-        size: o.size,
-        uploaded: o.uploaded,
-        etag: o.etag,
-        contentType: "application/octet-stream"
-      })),
-      prefixes: list.delimitedPrefixes || []
-    });
-  } catch (e: any) {
-    return c.json({ error: e.message }, { status: 500 });
-  }
-});
-
-app.get("/api/storage/stat", async (c) => {
-  const { env } = getCloudflareContext();
-  const key = c.req.query("key");
-  if (!key) return c.json({ error: "Missing key" }, { status: 400 });
-
-  try {
-    const stat = await env.BUCKET.head(key);
-    if (!stat) throw new Error("File not found");
-    return c.json(stat);
-  } catch (e: any) {
-    return c.json({ error: e.message }, { status: 404 });
-  }
-});
-
-app.get("/api/storage/file/*", async (c) => {
-  const { env } = getCloudflareContext();
-  const key = c.req.path.replace("/api/storage/file/", "");
-  if (!key) return c.text("Not Found", { status: 404 });
-
-  const obj = await env.BUCKET.get(key);
-  if (!obj) return c.text("File not found", { status: 404 });
-
-  return new Response(await obj.arrayBuffer(), {
-    headers: {
-      "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
-      "Content-Disposition": `inline; filename="${key}"`
-    }
-  });
-});
-
-app.post("/api/storage/upload", async (c) => {
-  try {
-    const { env } = getCloudflareContext();
-    const formData = await c.req.formData();
-    const file = formData.get("file") as File;
-    if (!file) return c.json({ error: "No file uploaded" }, { status: 400 });
-
-    await env.BUCKET.put(file.name, await file.arrayBuffer(), {
-      httpMetadata: { contentType: file.type }
-    });
-
-    return c.json({ message: "Upload successful", key: file.name });
-  } catch (e: any) {
-    return c.json({ error: e.message }, { status: 500 });
-  }
-});
-
-app.post("/api/storage/delete", async (c) => {
-  const { env } = getCloudflareContext();
-  const { key } = await c.req.json() as { key: string };
-  if (!key) return c.json({ error: "Missing key" }, { status: 400 });
-
-  await env.BUCKET.delete(key);
-  return c.json({ message: "Deleted successfully" });
-});
-
-// ─── Routes: KV (Native Cloudflare KV) ──────────────────
-app.get("/api/redis", async (c) => {
-  const { env } = getCloudflareContext();
-  const count = await env.REDIS.get("playground_count");
-  return c.json({ count: parseInt(count ?? "0") });
-});
-
-app.post("/api/redis", async (c) => {
-  const { env } = getCloudflareContext();
-  const current = await env.REDIS.get("playground_count");
-  const next = (parseInt(current ?? "0") + 1).toString();
-  await env.REDIS.put("playground_count", next);
-  return c.json({ count: parseInt(next) });
-});
-
-app.post("/api/redis/delete", async (c) => {
-  const { env } = getCloudflareContext();
-  await env.REDIS.delete("playground_count");
-  return c.json({ count: 0 });
-});
-
-// Serve frontend for all unmatched routes
 app.get("*", (c) => {
-  if (typeof index === "string") return c.html(index);
-  return new Response(index.toString(), {
-    headers: { "Content-Type": "text/html" },
-  });
+  const html = typeof index === "string" ? index : (index as any).toString();
+  return c.html(html);
 });
 
 export default serve({
   routes: {
-    // 1. Dynamic parameters example
-    "/api/native/:id": (req) => {
-      return Response.json({
-        source: "Native bunflare Router",
-        params: req.params,
-        id: req.params.id
-      });
-    },
-    // 2. Wildcard example
-    "/api/files/*": (req) => {
-      return Response.json({
-        source: "Native bunflare Router (Wildcard)",
-        path: req.params.any
-      });
-    },
-    // 3. Method-based handler with params (now imported for splitting test)
-    // @ts-ignore - Satisfaction for Bun.serve types which expect (req, srv) or (req)
-    "/api/echo/:message": async (req) => {
-      const { echoHandler } = await import("./handlers/echo");
-      return echoHandler(req);
-    },
-    // 4. WebSocket Example (Redirected to Durable Object for broadcasting)
-    "/ws": (req) => {
+    "/ws": (req: any) => {
       const { env } = getCloudflareContext();
-      if (!env.CHAT_HUB) return new Response("Chat Hub not found", { status: 500 });
-      const id = env.CHAT_HUB.idFromName("global-chat");
-      const hub = env.CHAT_HUB.get(id);
-      const rawRequest = req._rawRequest || req;
-      return hub.fetch(rawRequest);
+      if (!env.CHAT_HUB) return new Response("Chat Hub missing", { status: 500 });
+      return env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global-chat")).fetch(req);
     }
   },
-  // @ts-ignore - transformed by bunflare to Cloudflare Worker fetch(request, env, ctx)
-  fetch: (req, env, ctx) => app.fetch(req, env, ctx),
-  port: 3004,
-  development: process.env.NODE_ENV !== "production" && {
-    hmr: true,
-    console: true,
-  },
-});
-
-console.log("🚀 Playground running at http://localhost:3004");
+  fetch: (req: any, env: any, ctx: any) => app.fetch(req, env, ctx)
+} as any);

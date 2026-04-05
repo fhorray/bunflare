@@ -1,4 +1,13 @@
-import type { IncomingRequestCfProperties, ExecutionContext, DurableObjectState } from "@cloudflare/workers-types";
+import type { IncomingRequestCfProperties, ExecutionContext, DurableObjectState, MessageBatch, ScheduledEvent as CFScheduledEvent } from "@cloudflare/workers-types";
+
+export type { MessageBatch, Message } from "@cloudflare/workers-types";
+export type ScheduledEvent = CFScheduledEvent;
+
+export interface QueueOptions {
+  batchSize?: number;
+  maxRetries?: number;
+  maxBatchTimeout?: number;
+}
 
 export interface WorkflowEvent<T = any> {
   payload: Readonly<T>;
@@ -317,4 +326,19 @@ export interface BunflareConfig {
    * }
    */
   loader?: Record<string, Loader>;
+}
+
+export interface SEOOptions {
+  /** Page title. Replaces existing <title> or inserts new one. */
+  title?: string;
+  /** Meta description. Replaces or inserts <meta name="description">. */
+  description?: string;
+  /** Primary image (og:image / twitter:image). */
+  image?: string;
+  /** Canonical URL. */
+  canonical?: string;
+  /** Inlines a <script> tag at the end of the <head>. */
+  injectScript?: string;
+  /** Additional dynamic meta tags (e.g., { "og:type": "article" }). */
+  [key: string]: string | undefined;
 }

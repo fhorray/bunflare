@@ -11,17 +11,17 @@ import { runInit } from "./init";
  */
 async function main() {
   const command = process.argv[2];
+  const args = process.argv.slice(2);
+  const rootDir = args.includes("--rootDir") ? args[args.indexOf("--rootDir") + 1] : undefined;
 
   switch (command) {
     case "init": {
-      const args = process.argv.slice(2);
       const yes = args.includes("--yes") || args.includes("-y");
-      await runInit({ yes });
+      await runInit({ yes, rootDir });
       break;
     }
 
     case "build": {
-      const args = process.argv.slice(2);
       const production = args.includes("--production") || args.includes("-p");
       const quiet = args.includes("--quiet") || args.includes("-q");
       await runBuild({ production, quiet });
@@ -29,10 +29,10 @@ async function main() {
     }
 
     case "dev": {
-      const args = process.argv.slice(2);
       const quiet = args.includes("--quiet") || args.includes("-q");
+      const remote = args.includes("--remote") || args.includes("-r");
       const { runDev } = await import("./dev");
-      await runDev({ quiet });
+      await runDev({ quiet, remote });
       break;
     }
 
@@ -43,8 +43,9 @@ async function main() {
     }
 
     case "doctor": {
+      const fix = args.includes("--fix") || args.includes("-f");
       const { runDoctor } = await import("./doctor");
-      await runDoctor();
+      await runDoctor({ rootDir, fix });
       break;
     }
 
@@ -63,7 +64,7 @@ ${pc.bold("Commands:")}
   ${pc.bold(pc.blue("Development"))}
     ${pc.green("init")}       🚀  Initialize project (wrangler.jsonc + bunflare.config.ts)
     ${pc.green("dev")}        🛠️   Start dev server (live reload, smart build, filtering)
-    ${pc.green("doctor")}     🩺  Verify project health and configuration
+    ${pc.green("doctor")}     🩺  Verify project health and config (${pc.cyan("--fix")} to repair)
     
   ${pc.bold(pc.blue("Production"))}
     ${pc.green("build")}      📦  Bundle worker and assets for production
@@ -71,10 +72,12 @@ ${pc.bold("Commands:")}
     
   ${pc.bold(pc.blue("General"))}
     ${pc.green("help")}       ❓  Display this message
+    --rootDir <path>  Specify project root directory
 
-${pc.bold("Options (build/dev):")}
+${pc.bold("Options (build/dev/doctor):")}
   ${pc.cyan("--production")}, ${pc.cyan("-p")}    Enable minification and drop console (production)
   ${pc.cyan("--quiet")}, ${pc.cyan("-q")}         Silence build logs (ideal for CI/CD)
+  ${pc.cyan("--fix")}, ${pc.cyan("-f")}           Automatically fix configuration issues (doctor only)
   ${pc.cyan("--help")}, ${pc.cyan("-h")}          Show this information
 
 ${pc.dim(`Documentation: ${pc.underline("https://github.com/fhorray/bunflare")}`)}

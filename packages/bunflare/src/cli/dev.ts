@@ -7,8 +7,9 @@ import pc from "picocolors";
  * Orchestrates the development environment.
  * Runs bunflare build and wrangler dev in harmony.
  */
-export async function runDev(options: { quiet?: boolean } = {}) {
+export async function runDev(options: { quiet?: boolean, remote?: boolean } = {}) {
   const quiet = options.quiet || false;
+  let remote = options.remote || false;
 
   if (!quiet) {
     log.header("Starting development environment...", "cyan");
@@ -21,20 +22,29 @@ export async function runDev(options: { quiet?: boolean } = {}) {
     process.exit(1);
   }
 
-  // 2. Load Wrangler Config to find the port
+  // 2. Load Wrangler Config
   const { loadWranglerConfig } = await import("../config");
   const wranglerConfig = await loadWranglerConfig();
+  
   const port = wranglerConfig?.dev?.port || 8787;
   const url = `http://localhost:${port}`;
 
   if (!quiet) {
-    log.info("Starting wrangler dev...");
+    log.info(`Starting wrangler dev ${remote ? pc.yellow("(full remote mode)") : pc.green("(local mode)")}...`);
     log.line(`  ${pc.green("🚀")} ${pc.bold("Server running at")} ${pc.cyan(pc.underline(url))}`);
     log.hr();
   }
 
   // 3. Spawn Wrangler Dev
-  const wranglerArgs = ["wrangler", "dev", "--live-reload"];
+  const wranglerArgs = ["wrangler", "dev"];
+  
+  // --live-reload is NOT supported when the GLOBAL --remote flag is used
+  if (!remote) {
+    wranglerArgs.push("--live-reload");
+  } else {
+    wranglerArgs.push("--remote");
+  }
+
   if (quiet) {
     wranglerArgs.push("--show-interactive-dev-session=false");
   }

@@ -9,9 +9,27 @@ import { RealtimeView } from "./components/views/RealtimeView";
 import { PersistenceView } from "./components/views/PersistenceView";
 import { AutomationView } from "./components/views/AutomationView";
 import { ContainerView } from "./components/views/ContainerView";
+import { SeoView } from "./components/views/SeoView";
+import { QueueView } from "./components/views/QueueView";
+import { CronView } from "./components/views/CronView";
+import { BrowserView } from "./components/views/BrowserView";
 import "./index.css";
 
-export type Tab = "overview" | "database" | "storage" | "cache" | "routing" | "realtime" | "persistence" | "automation" | "compute";
+export type Tab = 
+  | "overview" 
+  | "database" 
+  | "storage" 
+  | "cache" 
+  | "routing" 
+  | "realtime" 
+  | "persistence" 
+  | "automation" 
+  | "containers" 
+  | "seo"
+  | "queues"
+  | "crons"
+  | "browser"
+  | "edge";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -34,8 +52,18 @@ export function App() {
         return <PersistenceView />;
       case "automation":
         return <AutomationView />;
-      case "compute":
+      case "containers":
         return <ContainerView />;
+      case "seo":
+        return <SeoView />;
+      case "queues":
+        return <QueueView />;
+      case "crons":
+        return <CronView />;
+      case "browser":
+        return <BrowserView />;
+      case "edge":
+        return <CacheView />;
       default:
         return <OverviewView />;
     }
