@@ -26,3 +26,27 @@ export function normalizeResourceName(str: string): string {
 export function toScreamingSnakeCase(str: string): string {
   return toKebabCase(str).toUpperCase().replace(/-/g, '_');
 }
+
+/**
+ * Formats an error for pretty printing in the CLI.
+ */
+export function formatError(err: any): string[] {
+  const lines: string[] = [];
+  
+  if (err instanceof AggregateError) {
+    lines.push(`AggregateError: ${err.message}`);
+    for (const subErr of err.errors) {
+      lines.push(`  - ${subErr.message || subErr}`);
+      if ((subErr as any).position) {
+         const pos = (subErr as any).position;
+         lines.push(`    at ${pos.file}:${pos.line}:${pos.column}`);
+      }
+    }
+  } else if (err.message) {
+    lines.push(err.message);
+  } else {
+    lines.push(String(err));
+  }
+  
+  return lines;
+}

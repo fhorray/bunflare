@@ -1,12 +1,31 @@
-import type { IncomingRequestCfProperties, ExecutionContext, DurableObjectState, MessageBatch, ScheduledEvent as CFScheduledEvent } from "@cloudflare/workers-types";
+import type { 
+  IncomingRequestCfProperties, 
+  ExecutionContext, 
+  DurableObjectState, 
+  MessageBatch as CFMessageBatch, 
+  Message as CFMessage,
+  ScheduledEvent as CFScheduledEvent 
+} from "@cloudflare/workers-types";
 
-export type { MessageBatch, Message } from "@cloudflare/workers-types";
+export interface MessageBatch<T = any> extends CFMessageBatch<T> {}
+export interface Message<T = any> extends CFMessage<T> {}
 export type ScheduledEvent = CFScheduledEvent;
 
 export interface QueueOptions {
   batchSize?: number;
   maxRetries?: number;
   maxBatchTimeout?: number;
+}
+
+export interface QueueBinding<T = any, Env = any> extends QueueOptions {
+  process: (messages: Message<T>[], env: Env) => any | Promise<any>;
+  [key: string]: any;
+}
+
+export interface CronBinding<Env = any> {
+  schedule: string;
+  run: (event: ScheduledEvent, env: Env) => any | Promise<any>;
+  [key: string]: any;
 }
 
 export interface WorkflowEvent<T = any> {

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1775580161094,
+      "tag": "0000_next_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1775585023694,
+      "tag": "0001_hot_jack_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1775585084408,
+      "tag": "0002_safe_doctor_octopus",
+      "breakpoints": true
+    }
+  ]
+}

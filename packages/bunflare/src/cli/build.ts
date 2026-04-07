@@ -130,37 +130,45 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
       htmlEntries.push(...staticHtmlEntries);
     }
 
-    // Build 1: The Worker
-    const workerResult = await Bun.build({
-      entrypoints: [finalEntrypoint],
-      outdir: absOutdir,
-      naming: {
-        entry: "index.js", // Force index.js so wrangler finds it
-        chunk: "[name]-[hash].[ext]",
-      },
-      target: config.target ?? "browser",
-      minify: config.minify ?? (isProd ? true : false),
-      sourcemap: config.sourcemap ?? (isProd ? "none" : "linked"),
-      external: [...(config.external ?? []), "wrangler", "cloudflare:workers", "cloudflare:email", "@cloudflare/containers"],
-      splitting: config.splitting ?? true,
-      define: {
-        "process.env.NODE_ENV": JSON.stringify(isProd ? "production" : "development"),
-        "__BUILD_TIME__": JSON.stringify(new Date().toISOString()),
-        ...config.define,
-      },
-      drop: config.drop ?? (isProd ? ["console", "debugger"] : []),
-      banner: config.banner,
-      footer: config.footer,
-      metafile: true,
-      loader: {
-        ".html": "text",
-        ...config.loader,
-      },
-      plugins: [
-        ...(config.plugins || []),
-        cloudflarePlugin(config, quiet)
-      ]
-    });
+    let workerResult;
+    try {
+      // Build 1: The Worker
+      workerResult = await Bun.build({
+        entrypoints: [finalEntrypoint],
+        outdir: absOutdir,
+        naming: {
+          entry: "index.js", // Force index.js so wrangler finds it
+          chunk: "[name]-[hash].[ext]",
+        },
+        target: config.target ?? "browser",
+        minify: config.minify ?? (isProd ? true : false),
+        sourcemap: config.sourcemap ?? (isProd ? "none" : "linked"),
+        external: [...(config.external ?? []), "wrangler", "cloudflare:workers", "cloudflare:email", "@cloudflare/containers"],
+        splitting: config.splitting ?? true,
+        define: {
+          "process.env.NODE_ENV": JSON.stringify(isProd ? "production" : "development"),
+          "__BUILD_TIME__": JSON.stringify(new Date().toISOString()),
+          ...config.define,
+        },
+        drop: config.drop ?? (isProd ? ["console", "debugger"] : []),
+        banner: config.banner,
+        footer: config.footer,
+        metafile: true,
+        loader: {
+          ".html": "text",
+          ...config.loader,
+        },
+        plugins: [
+          ...(config.plugins || []),
+          cloudflarePlugin(config, quiet)
+        ]
+      });
+    } catch (e: any) {
+      log.error("Bundle crashed during Worker build:");
+      const { formatError } = await import("./utils");
+      for (const line of formatError(e)) log.line(`  ${pc.red(line)}`);
+      return false;
+    }
 
     if (!workerResult.success) {
       log.error("Worker build failed:");

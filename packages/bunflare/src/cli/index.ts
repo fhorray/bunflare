@@ -133,7 +133,9 @@ if (import.meta.main) {
   try {
     await main();
   } catch (err) {
-    log.error(`Uncaught error: ${err}`);
+    log.error("Uncaught error in Bunflare CLI:");
+    const { formatError } = await import("./utils");
+    for (const line of formatError(err)) log.line(`  ${pc.red(line)}`);
     process.exit(1);
   }
 }

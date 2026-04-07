@@ -4,14 +4,14 @@ import { transformEnv } from "./env-transform";
 /**
  * Orchestrates all transformations for the given source code.
  */
-export function applyTransforms(source: string, filePath: string): string {
+export function applyTransforms(source: string, filePath: string, config?: any): string {
   // Skip node_modules and the package itself
   if (filePath.includes('node_modules')) return source;
 
   let transformed = source;
 
   // 1. Transform Bun.serve to standard Cloudflare Worker exports
-  transformed = transformServe(transformed);
+  transformed = transformServe(transformed, "index.tsx", config);
 
   // 2. Transform Bun.env/process.env to getCloudflareContext().env
   // This is kept as a convenience for environmental access.

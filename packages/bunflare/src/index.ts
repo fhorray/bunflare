@@ -1,9 +1,10 @@
 import "./runtime/safety";
+export { ai } from "./ai";
 export { getCloudflareContext, setCloudflareContext, getBunflareContext, setBunflareContext, getBunCloudflareContext } from "./runtime/context";
 export { tasks } from "./tasks";
 export { cache } from "./cache";
-import type { WorkflowEvent, WorkflowStep, WorkflowBinding, ContainerBinding, ContainerOptions, MessageBatch, ScheduledEvent } from "./types";
-export type { CloudflareEnv, CloudflareBindings, CloudflareContext, BunflareConfig, WorkflowEvent, WorkflowStep, WorkflowBinding, WorkflowInstance, ContainerBinding, ContainerInstance, ContainerOptions, DurableObjectState, MessageBatch, Message, ScheduledEvent } from "./types";
+import type { WorkflowEvent, WorkflowStep, WorkflowBinding, ContainerBinding, ContainerOptions, MessageBatch, ScheduledEvent, QueueBinding, CronBinding } from "./types";
+export type { CloudflareEnv, CloudflareBindings, CloudflareContext, BunflareConfig, WorkflowEvent, WorkflowStep, WorkflowBinding, WorkflowInstance, ContainerBinding, ContainerInstance, ContainerOptions, DurableObjectState, MessageBatch, Message, ScheduledEvent, QueueBinding, CronBinding } from "./types";
 export { defineConfig, loadConfig, loadWranglerConfig } from "./config";
 
 /**
@@ -87,16 +88,21 @@ export function durable<T extends { fetch?: (request: any, state: any, env: any)
  *   }
  * });
  */
-export function queue<T = any, Env = any>(options: {
-  /** Batch processing configuration. */
-  batchSize?: number;
-  maxRetries?: number;
-  maxBatchTimeout?: number;
-  /** The main processing handler. */
-  process: (messages: MessageBatch<T>["messages"], env: Env) => Promise<void> | void;
-  /** Any other methods or properties. */
-  [key: string]: any;
-}): any {
+export function queue<T = any, Env = any>(options: QueueBinding<T, Env>): QueueBinding<T, Env> {
+  return options;
+}
+
+/**
+ * Helper to define a Cloudflare Workers RPC Service with a fluid, Bun-style API.
+ * 
+ * @example
+ * export const MyService = rpc({
+ *   async hello(name: string) {
+ *     return `Hello, ${name}!`;
+ *   }
+ * });
+ */
+export function rpc<T extends Record<string, any>>(options: T): T {
   return options;
 }
 
@@ -111,13 +117,6 @@ export function queue<T = any, Env = any>(options: {
  *   }
  * });
  */
-export function cron<Env = any>(options: {
-  /** The CRON schedule (e.g., "0 0 * * *"). */
-  schedule: string;
-  /** The execution handler. */
-  run: (event: ScheduledEvent, env: Env) => Promise<void> | void;
-  /** Any other methods or properties. */
-  [key: string]: any;
-}): any {
+export function cron<Env = any>(options: CronBinding<Env>): CronBinding<Env> {
   return options;
 }

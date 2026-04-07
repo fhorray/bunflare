@@ -6,7 +6,7 @@ import { workerTemplate } from "../runtime/worker-template";
  * Main entry point for bunflare code transformation.
  * Uses OXC (Rust-powered AST parser) and MagicString for surgical replacement.
  */
-export function transformSource(source: string, filename: string = "index.tsx"): string {
+export function transformSource(source: string, filename: string = "index.tsx", config?: any): string {
   const s = new MagicString(source);
 
   const result = parseSync(filename, source, {
@@ -139,6 +139,18 @@ export function transformSource(source: string, filename: string = "index.tsx"):
   let hasContainer = false;
   const queueConsumers: { name: string; options: string }[] = [];
   const scheduledTasks: { name: string; schedule: string; options: string }[] = [];
+
+  // Populate from config if it's the main entry point
+  if (config?.queues?.consumers && (filename.endsWith("index.ts") || filename.endsWith("index.tsx") || filename.includes("src/index"))) {
+    config.queues.consumers.forEach((c: any) => {
+      // Convention: queue-name -> queue_name
+      const varName = (c.queue as string).replace(/-/g, '_');
+      // Only add if not already in the file to avoid duplicates
+      if (!queueConsumers.some(q => q.name === varName)) {
+        queueConsumers.push({ name: varName, options: "{}" });
+      }
+    });
+  }
 
   walk(program, (node, ancestors) => {
     if (node.type === "CallExpression") {
@@ -369,8 +381,9 @@ export function transformSource(source: string, filename: string = "index.tsx"):
         if (queueConsumers.length > 0) {
           handlerAdditions += `
   async queue(batch, env, ctx) {
-    switch (batch.queue) {
-      ${queueConsumers.map(q => `case "${q.name.toUpperCase()}":
+    const queueName = batch.queue.toUpperCase();
+    switch (queueName) {
+      ${queueConsumers.map(q => `case "${q.name.toUpperCase().replace(/_/g, '-')}":
         if (typeof ${q.name}.process === "function") return await ${q.name}.process(batch.messages, env);
         break;`).join("\n      ")}
     }
@@ -426,7 +439,7 @@ export function transformSource(source: string, filename: string = "index.tsx"):
   return prefix + s.toString();
 }
 
-export function transformDurables(source: string) { return transformSource(source); }
-export function transformWorkflows(source: string) { return transformSource(source); }
-export function transformContainers(source: string) { return transformSource(source); }
-export function transformServe(source: string) { return transformSource(source); }
+export function transformDurables(source: string, config?: any) { return transformSource(source, "durable.ts", config); }
+export function transformWorkflows(source: string, config?: any) { return transformSource(source, "workflow.ts", config); }
+export function transformContainers(source: string, config?: any) { return transformSource(source, "container.ts", config); }
+export function transformServe(source: string, filename: string = "index.tsx", config?: any) { return transformSource(source, filename, config); }

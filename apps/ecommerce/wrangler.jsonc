@@ -1,0 +1,96 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ecommerce-worker",
+  "main": "dist/index.js",
+  "compatibility_date": "2026-04-03",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "build": {
+    "command": "bunflare build",
+    "watch_dir": "src"
+  },
+  "vars": {
+    "JWT_SECRET": "JFVDBTaLWKvbsfM9cJMk7LrvvRWPQaSY"
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
+  "account_id": "b9aac465aa71533a0342ac8da7f32813",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ecommerce-db",
+      "database_id": "eaea9cfe-3f04-4d33-b4a7-939d3672bf90",
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "STOCK_MANAGER",
+        "class_name": "StockManager"
+      },
+      {
+        "name": "LIVE_CHAT",
+        "class_name": "LiveChat"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": [
+        "StockManager",
+        "LiveChat"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "order-fulfillment",
+      "binding": "ORDER_FULFILLMENT",
+      "class_name": "OrderFulfillment"
+    },
+    {
+      "name": "refund-workflow",
+      "binding": "REFUND_WORKFLOW",
+      "class_name": "RefundWorkflow"
+    }
+  ],
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "queues": {
+    "consumers": [
+      {
+        "queue": "email-processor"
+      },
+      {
+        "queue": "logs-ingestor"
+      }
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "CHECKOUT_LIMITER",
+      "namespace_id": "7460",
+      "simple": {
+        "limit": 100,
+        "period": 60
+      }
+    },
+    {
+      "name": "API_LIMITER",
+      "namespace_id": "9948",
+      "simple": {
+        "limit": 100,
+        "period": 60
+      }
+    }
+  ]
+}

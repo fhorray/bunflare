@@ -37,7 +37,7 @@ export function cloudflarePlugin(config?: BunflareConfig, quiet: boolean = false
         }
 
         // Apply transformations in order
-        const transformed = applyTransforms(source, args.path);
+        const transformed = applyTransforms(source, args.path, wranglerConfig);
 
         if (transformed === source) {
           return { contents: source, loader };
