@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
 import { log } from "./logger";
 import pc from "picocolors";
 import { Provisioner } from "./provisioner";
 import { runBuild } from "./build";
+import { spawnWrangler } from "./wrangler-runner";
  
  /**
   * Orchestrates the production deployment.
@@ -34,15 +34,10 @@ import { runBuild } from "./build";
    // We just need to ensure Wrangler runs in production mode.
    log.step("Deploying to Cloudflare...");
 
-  const wrangler = spawn("bunx", ["wrangler", "deploy"], {
-    stdio: "inherit",
-    shell: true,
+  const wrangler = spawnWrangler({
+    args: ["deploy"],
     cwd: rootDir,
-    env: {
-      ...process.env,
-      NODE_ENV: "production",
-      BUN_RUNTIME: "1"
-    }
+    env: { NODE_ENV: "production" }
   });
 
   wrangler.on("exit", (code) => {
@@ -53,11 +48,5 @@ import { runBuild } from "./build";
       log.error(`Deployment failed with exit code ${code}`);
       process.exit(code || 0);
     }
-  });
-
-  // Handle Termination
-  process.on("SIGINT", () => {
-    wrangler.kill("SIGINT");
-    process.exit(0);
   });
 }

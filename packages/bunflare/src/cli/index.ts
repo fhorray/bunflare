@@ -6,13 +6,54 @@ import { log } from "./logger";
 import { runBuild } from "./build";
 import { runInit } from "./init";
 
+export interface ParsedArgs {
+  command?: string;
+  rootDir?: string;
+  debug: boolean;
+  quiet: boolean;
+  args: string[];
+}
+
+export function parseArgs(argv: string[]): ParsedArgs {
+  const args = argv;
+  
+  // Identify the command as the first non-flag argument
+  let command: string | undefined;
+  let skipNext = false;
+  for (const arg of args) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    if (arg.startsWith("-")) {
+      if (arg === "--rootDir") skipNext = true;
+      continue;
+    }
+    command = arg;
+    break;
+  }
+
+  const debug = args.includes("--debug") || args.includes("-d");
+  const quiet = !debug;
+  
+  let rootDir: string | undefined;
+  const rootDirIndex = args.indexOf("--rootDir");
+  if (rootDirIndex !== -1) {
+    rootDir = args[rootDirIndex + 1];
+    if (!rootDir || rootDir.startsWith("-")) {
+      log.error("Missing value for --rootDir");
+      process.exit(1);
+    }
+  }
+
+  return { command, rootDir, debug, quiet, args };
+}
+
 /**
  * CLI Entry point for bunflare.
  */
-async function main() {
-  const command = process.argv[2];
-  const args = process.argv.slice(2);
-  const rootDir = args.includes("--rootDir") ? args[args.indexOf("--rootDir") + 1] : undefined;
+export async function main(argv: string[] = process.argv.slice(2)) {
+  const { command, rootDir, debug, quiet, args } = parseArgs(argv);
 
   switch (command) {
     case "init": {
@@ -23,13 +64,11 @@ async function main() {
 
     case "build": {
       const production = args.includes("--production") || args.includes("-p");
-      const quiet = args.includes("--quiet") || args.includes("-q");
       await runBuild({ production, quiet });
       break;
     }
 
     case "dev": {
-      const quiet = args.includes("--quiet") || args.includes("-q");
       const remote = args.includes("--remote") || args.includes("-r");
       const { runDev } = await import("./dev");
       await runDev({ quiet, remote });
@@ -77,7 +116,7 @@ ${pc.bold("Commands:")}
 
 ${pc.bold("Options (build/dev/doctor):")}
   ${pc.cyan("--production")}, ${pc.cyan("-p")}    Enable minification and drop console (production)
-  ${pc.cyan("--quiet")}, ${pc.cyan("-q")}         Silence build logs (ideal for CI/CD)
+  ${pc.cyan("--debug")}, ${pc.cyan("-d")}         Show verbose bundle information and logs
   ${pc.cyan("--fix")}, ${pc.cyan("-f")}           Automatically fix configuration issues (doctor only)
   ${pc.cyan("--auto")}, ${pc.cyan("-a")}          Bypass prompts for known repairs (doctor only)
   ${pc.cyan("--help")}, ${pc.cyan("-h")}          Show this information
@@ -89,9 +128,12 @@ ${pc.dim(`Documentation: ${pc.underline("https://github.com/fhorray/bunflare")}`
   }
 }
 
-try {
-  await main();
-} catch (err) {
-  log.error(`Uncaught error: ${err}`);
-  process.exit(1);
+// Only run main if this is the entry point
+if (import.meta.main) {
+  try {
+    await main();
+  } catch (err) {
+    log.error(`Uncaught error: ${err}`);
+    process.exit(1);
+  }
 }

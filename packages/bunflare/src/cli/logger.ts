@@ -9,16 +9,16 @@ const version = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
 export const log = {
   /** A subtle step indicator (Cyan) */
   step: (msg: string) => console.log(`${pc.cyan("○")} ${msg}`),
-  
+
   /** A success indicator (Green) */
   success: (msg: string) => console.log(`${pc.green("✔")} ${msg}`),
-  
+
   /** An error indicator (Red) */
   error: (msg: string) => console.log(`${pc.red("✖")} ${msg}`),
-  
+
   /** A warning indicator (Yellow) */
   warn: (msg: string) => console.log(`${pc.yellow("⚠")} ${pc.yellow(msg)}`), // Make warn yellow too
-  
+
   /** An informational indicator (Blue) */
   info: (msg: string) => console.log(`${pc.blue("ℹ")} ${pc.dim(msg)}`),
 
@@ -34,7 +34,7 @@ export const log = {
 
   /** Custom line */
   line: (msg: string) => console.log(msg),
-  
+
   /** Dim text */
   dim: (msg: string) => console.log(pc.dim(msg)),
 

@@ -38,8 +38,8 @@ describe("CLI Integration", () => {
         };
     `);
 
-    it("should run 'build' successfully with modern output", () => {
-        const result = spawnSync(["bun", cliPath, "build"], {
+    it("should run 'build' successfully with modern output in debug mode", () => {
+        const result = spawnSync(["bun", cliPath, "build", "--debug"], {
             cwd: testDir,
             env: { ...process.env, NODE_ENV: "production" }
         });

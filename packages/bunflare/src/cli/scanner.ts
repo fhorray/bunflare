@@ -4,6 +4,7 @@ import path from "node:path";
 export interface DetectedBinding {
   type: "d1" | "kv" | "r2" | "ai" | "do" | "workflow" | "container" | "browser" | "queue" | "cron" | "queue-name" | "ratelimit" | "flags";
   name: string;
+  filePath: string;
   metadata?: any;
 }
 
@@ -18,6 +19,9 @@ export function scanDirectoryForBindings(dirPath: string): DetectedBinding[] {
 
   const bindings: DetectedBinding[] = [];
   const patterns = [
+    { type: "d1", regex: /d1\s*\(\s*["'](\w+)["']/g },
+    { type: "d1", regex: /from\s+["']drizzle-orm\/d1["']/g, name: "DB" },
+    { type: "d1", regex: /env\.(DB)/g },
     { type: "do", regex: /export\s+const\s+(\w+)\s*=\s*durable\(/g },
     { type: "workflow", regex: /export\s+const\s+(\w+)\s*=\s*workflow\(/g },
     { type: "container", regex: /export\s+const\s+(\w+)\s*=\s*container\(/g },
@@ -37,13 +41,15 @@ export function scanDirectoryForBindings(dirPath: string): DetectedBinding[] {
 
     try {
       const content = readFileSync(filePath, "utf-8");
-      for (const { type, regex } of patterns) {
+      for (const pattern of patterns) {
+        const { type, regex } = pattern;
         let match;
         // Reset regex state for global searches
         regex.lastIndex = 0;
         while ((match = regex.exec(content)) !== null) {
-          if (match[1]) {
-            bindings.push({ type: type as any, name: match[1] });
+          const name = (pattern as any).name || match[1];
+          if (name) {
+            bindings.push({ type: type as any, name, filePath });
           }
         }
       }
