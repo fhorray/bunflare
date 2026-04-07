@@ -85,10 +85,12 @@ export class ConfigManager {
       config.durable_objects = config.durable_objects || { bindings: [] };
       config.durable_objects.bindings = config.durable_objects.bindings || [];
       const idx = config.durable_objects.bindings.findIndex((b: any) => 
-        normalizeResourceName(b.name) === normalizedDataName || normalizeResourceName(b.class_name) === normalizedDataName
+        normalizeResourceName(b.name) === normalizedDataBinding || normalizeResourceName(b.class_name) === normalizedDataName
       );
-      if (idx === -1) config.durable_objects.bindings.push(data);
-      else config.durable_objects.bindings[idx] = { ...config.durable_objects.bindings[idx], ...data };
+      // Wrangler only needs name and class_name
+      const cleanData = { name: data.name, class_name: data.class_name };
+      if (idx === -1) config.durable_objects.bindings.push(cleanData);
+      else config.durable_objects.bindings[idx] = { ...config.durable_objects.bindings[idx], ...cleanData };
     } else if (type === "workflow") {
       config.workflows = config.workflows || [];
       const idx = config.workflows.findIndex((w: any) => 
@@ -97,7 +99,8 @@ export class ConfigManager {
       if (idx === -1) config.workflows.push(data);
       else config.workflows[idx] = { ...config.workflows[idx], ...data };
     } else if (type === "browser") {
-      config.browser = { ...config.browser, ...data };
+      // Wrangler only needs the binding name
+      config.browser = { binding: data.binding };
     } else if (type === "queue") {
       config.queues = config.queues || { producers: [] };
       config.queues.producers = config.queues.producers || [];
@@ -119,11 +122,40 @@ export class ConfigManager {
       }
     } else if (type === "ratelimit") {
       config.ratelimits = config.ratelimits || [];
-      const idx = config.ratelimits.findIndex((r: any) => normalizeResourceName(r.name) === normalizedDataName);
-      if (idx === -1) config.ratelimits.push(data);
-      else config.ratelimits[idx] = { ...config.ratelimits[idx], ...data };
+      const idx = config.ratelimits.findIndex((r: any) => normalizeResourceName(r.name) === normalizedDataBinding);
+      const cleanData = { 
+        name: data.name, 
+        namespace_id: data.namespace_id,
+        simple: data.simple || { limit: 100, period: 60 } 
+      };
+      if (idx === -1) config.ratelimits.push(cleanData);
+      else config.ratelimits[idx] = { ...config.ratelimits[idx], ...cleanData };
     }
 
+    this.write(config);
+  }
+
+  setAccountID(id: string): void {
+    const config = this.read();
+    config.account_id = id;
+    this.write(config);
+  }
+
+  addMigration(tagName: string, newClasses: string[]): void {
+    const config = this.read();
+    config.migrations = config.migrations || [];
+    const idx = config.migrations.findIndex((m: any) => m.tag === tagName);
+    if (idx === -1) {
+      config.migrations.push({ tag: tagName, new_classes: newClasses });
+    } else {
+      const existingClasses = config.migrations[idx].new_classes || [];
+      for (const cls of newClasses) {
+        if (!existingClasses.includes(cls)) {
+          existingClasses.push(cls);
+        }
+      }
+      config.migrations[idx].new_classes = existingClasses;
+    }
     this.write(config);
   }
 

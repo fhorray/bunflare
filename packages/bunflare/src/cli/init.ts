@@ -11,7 +11,7 @@ import { Provisioner } from "./provisioner";
  */
 export async function runInit(options: { yes?: boolean, rootDir?: string } = {}) {
   const rootDir = options.rootDir || process.cwd();
-  
+
   if (!options.yes) {
     p.intro(pc.bgMagenta(pc.bold(" ☁️  Bunflare Initialization ")));
   } else {
@@ -34,7 +34,7 @@ export async function runInit(options: { yes?: boolean, rootDir?: string } = {})
   // 2. Interactive Prompts (Skipped if -y is used)
   let selectedBindings: string[] = [];
   let shouldAutoProvision = false;
-  
+
   if (!options.yes) {
     const name = await p.text({
       message: "What is the name of your project?",
@@ -75,7 +75,13 @@ export async function runInit(options: { yes?: boolean, rootDir?: string } = {})
         message: "Would you like to provision these resources now? (Requires Cloudflare login)",
         initialValue: false,
       });
-      if (!p.isCancel(provision) && provision) {
+
+      if (p.isCancel(provision)) {
+        p.cancel("Initialization cancelled.");
+        process.exit(0);
+      }
+
+      if (provision) {
         shouldAutoProvision = true;
       }
     }
@@ -180,7 +186,7 @@ ${hasTailwind ? `
       pkg.devDependencies = pkg.devDependencies || {};
       if (!pkg.devDependencies.bunflare && !pkg.dependencies?.bunflare) pkg.devDependencies.bunflare = "latest";
       if (!pkg.devDependencies.wrangler && !pkg.dependencies?.wrangler) pkg.devDependencies.wrangler = "latest";
-      
+
       // Auto-add puppeteer if browser selected
       if (selectedBindings.includes("browser")) {
         pkg.dependencies = pkg.dependencies || {};

@@ -30,7 +30,7 @@ export const MyBrowser = browser({ async run() {} });
     `;
     const transformed = transformSource(source, "index.ts");
     expect(transformed).toContain("if (!this.env.BROWSER)");
-    expect(transformed).toContain("Browser Rendering binding (BROWSER) not found");
+    expect(transformed).toContain("Browser Rendering binding (BROWSER) missing.");
   });
 
   test("ensures browser.close() is in finally block", () => {

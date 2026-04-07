@@ -121,3 +121,19 @@ export function cron<Env = any>(options: {
 }): any {
   return options;
 }
+
+/**
+ * Helper to define a Cloudflare D1 Database binding.
+ * 
+ * @example
+ * export const db = d1("DB");
+ */
+export function d1(name: string): any {
+  try {
+    const { getCloudflareContext } = require("./runtime/context");
+    const ctx = getCloudflareContext();
+    return ctx ? ctx.env[name] : name;
+  } catch (e) {
+    return name;
+  }
+}

@@ -7,7 +7,8 @@ export function toKebabCase(str: string): string {
   return str
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replace(/([A-Z])([A-Z])(?=[a-z])/g, '$1-$2')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/_/g, '-');
 }
 
 /**
@@ -16,4 +17,12 @@ export function toKebabCase(str: string): string {
  */
 export function normalizeResourceName(str: string): string {
     return str.toLowerCase().replace(/[-_]/g, '');
+}
+
+/**
+ * Converts a string to SCREAMING_SNAKE_CASE.
+ * e.g. "ProcessingWorkflow" -> "PROCESSING_WORKFLOW"
+ */
+export function toScreamingSnakeCase(str: string): string {
+  return toKebabCase(str).toUpperCase().replace(/-/g, '_');
 }

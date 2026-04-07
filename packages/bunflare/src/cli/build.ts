@@ -21,51 +21,43 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
     log.header(`Building for ${isProd ? "production" : "development"}...`, "blue");
   }
 
-  // 0. Build Path and Lock Resolution
   const outdir = config.outdir || "./dist";
   const absOutdir = path.resolve(rootDir, outdir);
-  const lockFile = path.join(absOutdir, ".bunflare.lock");
-  const nextFile = path.join(absOutdir, ".bunflare.next");
-  const myPid = process.pid.toString();
 
-  // Ensure output directory exists before any lock manipulation
   if (!existsSync(absOutdir)) {
     mkdirSync(absOutdir, { recursive: true });
   }
 
-  // --- Build Coalescing Logic ---
+  // Define locking using a simpler and less error-prone Promise/Map approach for intra-process builds,
+  // or a basic lockfile with standard fail-safe for cross-process.
+  // Since Bunflare build is mostly run single-shot or sequentially by the dev server:
+  const lockFile = path.join(absOutdir, ".bunflare.lock");
   let lockAcquired = false;
-  let retries = 0;
-  const MAX_WAIT_MS = 2000; 
-  
-  while (!lockAcquired) {
-    try {
-      writeFileSync(lockFile, myPid, { flag: 'wx' });
-      lockAcquired = true;
-      try { if (existsSync(nextFile) && readFileSync(nextFile, "utf8") === myPid) unlinkSync(nextFile); } catch (e) {}
-    } catch (e) {
-      writeFileSync(nextFile, myPid); 
-      if (retries > 0) {
-        try {
-          const currentNext = readFileSync(nextFile, "utf8");
-          if (currentNext !== myPid) {
-            if (!quiet) log.info(`Build ${myPid} superseded by ${currentNext}.`);
-            return true; 
-          }
-        } catch (err) {}
-      }
-      if (retries * 50 > MAX_WAIT_MS) {
-        if (!quiet) log.warn(`Build lock timeout. Clearing and proceeding.`);
-        try { unlinkSync(lockFile); } catch (err) {}
-        continue;
-      }
-      retries++;
-      await new Promise(r => setTimeout(r, 50));
+  const myPid = process.pid.toString();
+
+  try {
+    writeFileSync(lockFile, myPid, { flag: 'wx' });
+    lockAcquired = true;
+  } catch (e) {
+    // Basic file-lock fallback, wait up to 1 second then force
+    const MAX_WAIT_MS = 1000;
+    let waited = 0;
+    while (!lockAcquired && waited < MAX_WAIT_MS) {
+      await new Promise(r => setTimeout(r, 100));
+      waited += 100;
+      try {
+        writeFileSync(lockFile, myPid, { flag: 'wx' });
+        lockAcquired = true;
+      } catch (err) {}
+    }
+    if (!lockAcquired) {
+      if (!quiet) log.warn(`Build lock timeout. Forcing clear.`);
+      try { unlinkSync(lockFile); } catch (err) {}
+      try { writeFileSync(lockFile, myPid, { flag: 'wx' }); lockAcquired = true; } catch (err) {}
     }
   }
 
   try {
-    // --- Actual Build Execution ---
     let entrypoint = config.entrypoint;
     if (!entrypoint) {
       const defaultEntries = ["./src/index.ts", "./src/index.tsx", "./src/index.js", "./src/index.jsx"];
@@ -78,24 +70,75 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
       }
     }
     entrypoint = entrypoint || "./src/index.ts"; 
+    
+    let finalEntrypoint = path.resolve(rootDir, entrypoint);
+    
+    // Preemptive Entrypoint Check: Prevent cryptic AggregateErrors from Bun
+    if (!existsSync(finalEntrypoint)) {
+      log.error(`Entrypoint not found: ${pc.white(entrypoint)}`);
+      log.line(`Please ensure this file exists or update the ${pc.cyan("entrypoint")} field in your ${pc.cyan("bunflare.config.ts")}.`);
+      return false;
+    }
+
     const watchDir = config.watchDir || "src";
 
+    // 0. Discover Resources for Named Exports (Automatic Identification)
+    const { scanDirectoryForBindings } = await import("./scanner");
+    const sourceDir = path.join(rootDir, watchDir);
+    const discovered = scanDirectoryForBindings(sourceDir);
+    const exportable = discovered.filter(b => ["do", "workflow", "container"].includes(b.type));
+    
+    let tempEntryPath = path.join(absOutdir, ".bunflare_entry.ts");
+
+    if (exportable.length > 0) {
+      if (!quiet) log.info(`Auto-identified ${exportable.length} resources to export.`);
+      
+      // Fix: Ensure the worker import uses a relative path from the dist folder
+      let relWorkerPath = path.relative(path.dirname(tempEntryPath), finalEntrypoint);
+      if (!relWorkerPath.startsWith(".")) relWorkerPath = "./" + relWorkerPath;
+      // Also strip extension just in case, similar to other imports
+      relWorkerPath = relWorkerPath.replace(/\.(ts|tsx|js|jsx)$/, "");
+
+      let entryContent = `import $$worker from "${relWorkerPath}";\n`;
+      const seen = new Set<string>();
+      
+      exportable.forEach(ex => {
+        if (seen.has(ex.name)) return;
+        seen.add(ex.name);
+        // Ensure relative path is correct from the temp entry point's perspective
+        let relPath = path.relative(path.dirname(tempEntryPath), ex.filePath);
+        if (!relPath.startsWith(".")) relPath = "./" + relPath;
+        // Strip extension for cleaner imports
+        relPath = relPath.replace(/\.(ts|tsx|js|jsx)$/, "");
+        
+        entryContent += `export { ${ex.name} } from "${relPath}";\n`;
+      });
+      entryContent += `export default $$worker;\n`;
+      
+      writeFileSync(tempEntryPath, entryContent);
+      finalEntrypoint = tempEntryPath;
+    }
+
+    const staticHtmlDirName = config.staticDir || "public";
     const htmlGlob = new Glob("**/*.html");
     const htmlEntries = [...htmlGlob.scanSync(path.join(rootDir, watchDir))].map(f => path.join(watchDir, f));
-
-    // 1. Double-check directories
-    if (!existsSync(absOutdir)) mkdirSync(absOutdir, { recursive: true });
+    
+    // Also scan the static directory for HTML templates
+    const staticHtmlPath = path.resolve(rootDir, staticHtmlDirName);
+    if (existsSync(staticHtmlPath)) {
+      const staticHtmlEntries = [...htmlGlob.scanSync(staticHtmlPath)].map(f => path.join(staticHtmlDirName, f));
+      htmlEntries.push(...staticHtmlEntries);
+    }
 
     // Build 1: The Worker
     const workerResult = await Bun.build({
-      entrypoints: [entrypoint],
+      entrypoints: [finalEntrypoint],
       outdir: absOutdir,
-      target: config.target ?? "browser",
-      format: "esm",
       naming: {
-        entry: "[name].[ext]",
+        entry: "index.js", // Force index.js so wrangler finds it
         chunk: "[name]-[hash].[ext]",
       },
+      target: config.target ?? "browser",
       minify: config.minify ?? (isProd ? true : false),
       sourcemap: config.sourcemap ?? (isProd ? "none" : "linked"),
       external: [...(config.external ?? []), "wrangler", "cloudflare:workers", "cloudflare:email", "@cloudflare/containers"],
@@ -216,7 +259,6 @@ export async function runBuild(options: { rootDir?: string; production?: boolean
     if (lockAcquired) {
       try { if (existsSync(lockFile)) unlinkSync(lockFile); } catch (e) { }
     }
-    try { if (existsSync(nextFile) && readFileSync(nextFile, "utf8") === myPid) unlinkSync(nextFile); } catch (e) {}
   }
 }
 
