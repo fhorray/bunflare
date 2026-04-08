@@ -18,57 +18,13 @@ const $$routes = $$options.routes ? Object.entries($$options.routes).sort(([a], 
   };
 }) : [];
 
-const $$topics = new Map();
-
 const $$server = {
   upgrade(req, options = {}) {
-    if (typeof WebSocketPair === "undefined") return false;
-    const [client, server] = new WebSocketPair();
-    const ws = {
-      data: options.data || {},
-      readyState: 1,
-      send: (msg) => server.send(msg),
-      close: (code, reason) => server.close(code, reason),
-      subscribe: (topic) => {
-        if (!$$topics.has(topic)) $$topics.set(topic, new Set());
-        $$topics.get(topic).add(server);
-      },
-      unsubscribe: (topic) => {
-        for (const subs of $$topics.values()) subs.delete(server);
-      },
-      publish: (topic, data) => {
-        const subs = $$topics.get(topic);
-        if (subs) {
-          for (const s of subs) {
-            if (s !== server) s.send(data);
-          }
-        }
-      }
-    };
-    server.accept();
-    if ($$options.websocket?.open) $$options.websocket.open(ws);
-    server.addEventListener("message", (e) => {
-      if ($$options.websocket?.message) $$options.websocket.message(ws, e.data);
-    });
-    server.addEventListener("close", (e) => {
-      for (const subs of $$topics.values()) subs.delete(server);
-      if ($$options.websocket?.close) $$options.websocket.close(ws, e.code, e.reason);
-    });
-    server.addEventListener("error", (e) => {
-      if ($$options.websocket?.error) $$options.websocket.error(ws, e.error || e);
-    });
-    globalThis.$$upgradeResponse = new Response(null, {
-      status: 101,
-      webSocket: client,
-      headers: options.headers
-    });
-    return true;
+    console.warn("[Bunflare] Warning: server.upgrade() cannot scale globally. Use the 'websocket()' wrapper for persistent Pub/Sub via Durable Objects.");
+    return false;
   },
   publish: (topic, data) => {
-    const subs = $$topics.get(topic);
-    if (subs) {
-      for (const s of subs) s.send(data);
-    }
+    console.warn("[Bunflare] Warning: global publish() is not supported without Durable Objects.");
   }
 };
 

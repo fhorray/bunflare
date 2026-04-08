@@ -28,17 +28,16 @@ export {
 
 export default serve({
   routes: {
-    "/ws/support": (req: any) => {
-      // Use the standard getCloudflareContext() and check for the binding existence
+    "/ws/support": (req: Request) => {
       const { env } = getCloudflareContext();
-
-      if (!env.LIVE_CHAT) {
-        console.error("Critical: LIVE_CHAT binding is missing from context.");
-        return new Response("Service Unavailable: Chat Hub missing", { status: 503 });
-      }
-
-      const id = env.LIVE_CHAT.idFromName("global");
-      return env.LIVE_CHAT.get(id).fetch(req);
+      return LiveChat.connect(req, env, "global");
+    },
+    "/ws/health": async (req: Request) => {
+      const { env } = getCloudflareContext();
+      const res = await LiveChat.connect(req, env, "global");
+      return new Response(`DO Health: ${res.status === 200 ? "OK" : "Error " + res.status}`, { 
+        status: res.status === 200 ? 200 : 500 
+      });
     }
   },
   fetch: app.fetch

@@ -4,7 +4,7 @@ export { getCloudflareContext, setCloudflareContext, getBunflareContext, setBunf
 export { tasks } from "./tasks";
 export { cache } from "./cache";
 import type { WorkflowEvent, WorkflowStep, WorkflowBinding, ContainerBinding, ContainerOptions, MessageBatch, ScheduledEvent, QueueBinding, CronBinding } from "./types";
-export type { CloudflareEnv, CloudflareBindings, CloudflareContext, BunflareConfig, WorkflowEvent, WorkflowStep, WorkflowBinding, WorkflowInstance, ContainerBinding, ContainerInstance, ContainerOptions, DurableObjectState, MessageBatch, Message, ScheduledEvent, QueueBinding, CronBinding } from "./types";
+export type { CloudflareEnv, CloudflareBindings, CloudflareContext, BunflareConfig, WorkflowEvent, WorkflowStep, WorkflowBinding, WorkflowInstance, ContainerBinding, ContainerInstance, ContainerOptions, DurableObjectState, MessageBatch, Message, ScheduledEvent, QueueBinding, CronBinding, WebSocketBinding, WebSocketOptions } from "./types";
 export { defineConfig, loadConfig, loadWranglerConfig } from "./config";
 
 /**
@@ -119,4 +119,21 @@ export function rpc<T extends Record<string, any>>(options: T): T {
  */
 export function cron<Env = any>(options: CronBinding<Env>): CronBinding<Env> {
   return options;
+}
+
+import type { WebSocketBinding, WebSocketOptions } from "./types";
+
+/**
+ * Helper to define a Cloudflare WebSocket Hub via a Durable Object.
+ * This is transformed into a standard Cloudflare class by the bunflare build process.
+ * 
+ * @example
+ * export const ChatRoom = websocket({
+ *   async message(ws, message) {
+ *     ws.publish("global", message);
+ *   }
+ * });
+ */
+export function websocket<T extends WebSocketOptions>(options: T): WebSocketBinding {
+  return options as any;
 }

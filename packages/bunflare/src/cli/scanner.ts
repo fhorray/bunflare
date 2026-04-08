@@ -23,6 +23,7 @@ export function scanDirectoryForBindings(dirPath: string): DetectedBinding[] {
     { type: "d1", regex: /from\s+["']drizzle-orm\/d1["']/g, name: "DB" },
     { type: "d1", regex: /env\.(DB)/g },
     { type: "do", regex: /export\s+const\s+(\w+)\s*=\s*durable\(/g },
+    { type: "do", regex: /export\s+const\s+(\w+)\s*=\s*websocket\(/g },
     { type: "workflow", regex: /export\s+const\s+(\w+)\s*=\s*workflow\(/g },
     { type: "container", regex: /export\s+const\s+(\w+)\s*=\s*container\(/g },
     { type: "browser", regex: /export\s+const\s+(\w+)\s*=\s*browser\(/g },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '@nanostores/react';
 import { $adminUser, $user, logoutAdmin, $router } from '../store';
 import { Button } from '../../components/ui/button';
@@ -25,7 +25,8 @@ import {
   DollarSign,
   Archive,
   RefreshCw,
-  Zap
+  Zap,
+  Bot
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SelectOrder, SelectProduct, SelectUser } from '@/db/schema';
@@ -33,7 +34,7 @@ import type { SelectOrder, SelectProduct, SelectUser } from '@/db/schema';
 export function Admin() {
   const admin = useStore($adminUser);
   const user = useStore($user);
-  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'telemetry'>(
+  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'telemetry' | 'support'>(
     'inventory',
   );
 
@@ -63,6 +64,72 @@ export function Admin() {
   // Orders State
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+
+  // Support State
+  const [supportMessages, setSupportMessages] = useState<any[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [adminReply, setAdminReply] = useState('');
+  const wsRef = useRef<WebSocket | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (admin && activeTab === 'support' && !wsRef.current) {
+      connectSupport();
+    }
+  }, [admin, activeTab]);
+
+  const connectSupport = () => {
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const params = new URLSearchParams({
+        userId: 'admin',
+        name: admin?.name || 'Admin',
+        admin: 'true'
+      });
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/support?${params.toString()}`);
+      
+      ws.onmessage = (e) => {
+        const data = JSON.parse(typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data));
+        setSupportMessages(prev => {
+          if (prev.find(m => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
+      };
+      
+      ws.onclose = () => {
+          wsRef.current = null;
+          setTimeout(connectSupport, 3000);
+      };
+
+      wsRef.current = ws;
+    } catch (e) {
+      console.error("Support connection failed", e);
+    }
+  };
+
+  const sendAdminReply = () => {
+    if (!adminReply.trim() || !activeThreadId || !wsRef.current) return;
+    wsRef.current.send(JSON.stringify({
+      targetId: activeThreadId,
+      text: adminReply
+    }));
+    setAdminReply('');
+  };
+
+  const threads = useMemo(() => {
+    const uids = Array.from(new Set(supportMessages.map(m => m.userId))).filter(id => id && id !== 'admin');
+    
+    return uids.map(uid => {
+      const messages = supportMessages.filter(m => m.userId === uid);
+      const lastMsg = messages[messages.length - 1];
+      return { 
+        id: uid, 
+        name: lastMsg?.senderName || uid, 
+        lastText: lastMsg?.text,
+        lastTime: lastMsg?.timestamp ? new Date(lastMsg.timestamp).getTime() : 0
+      };
+    }).sort((a, b) => b.lastTime - a.lastTime);
+  }, [supportMessages]);
 
   // Telemetry State
   const [edgeLogs, setEdgeLogs] = useState<any[]>([]);
@@ -458,6 +525,12 @@ export function Admin() {
             >
               Edge Telemetry
             </button>
+            <button
+              onClick={() => setActiveTab('support')}
+              className={`text-sm font-bold transition-all ${activeTab === 'support' ? 'text-slate-900 underline underline-offset-8' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Support Hub
+            </button>
           </div>
           <button
             onClick={logoutAdmin}
@@ -826,6 +899,92 @@ export function Admin() {
                      </div>
                  ))}
               </div>
+          </div>
+        </div>
+      ) : activeTab === 'support' ? (
+        <div className="flex h-[600px] border border-slate-200 bg-white">
+          {/* Threads Sidebar */}
+          <div className="w-80 border-r border-slate-200 flex flex-col">
+            <div className="p-6 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-900">Connections</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {threads.length === 0 && (
+                <div className="p-10 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-loose">
+                  No active<br/>sessions
+                </div>
+              )}
+              {threads.map(thread => (
+                <button
+                  key={thread.id}
+                  onClick={() => setActiveThreadId(thread.id)}
+                  className={`w-full p-6 text-left border-b border-slate-100 transition-colors ${activeThreadId === thread.id ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-black uppercase tracking-tight text-slate-900">{thread.name}</span>
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                  </div>
+                  <p className="text-[10px] text-slate-400 truncate font-medium">{thread.lastText}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Chat Pane */}
+          <div className="flex-1 flex flex-col bg-slate-50/30">
+            {activeThreadId ? (
+              <>
+                <div className="p-6 border-b border-slate-200 bg-white flex items-center justify-between">
+                  <div>
+                    <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-900">Terminal: {activeThreadId}</h3>
+                    <p className="text-[9px] font-bold text-green-600 uppercase mt-1 tracking-tighter">Established Secure Encryption</p>
+                  </div>
+                </div>
+                
+                <div 
+                  ref={scrollRef}
+                  className="flex-1 overflow-y-auto p-10 space-y-6"
+                >
+                  {supportMessages.filter(m => m.userId === activeThreadId).map(msg => (
+                    <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
+                       <div className={`max-w-[70%] ${msg.sender === 'agent' ? 'text-right' : 'text-left'}`}>
+                          <div className={`p-4 text-xs font-medium leading-relaxed ${msg.sender === 'agent' ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-900'}`}>
+                            {msg.text}
+                          </div>
+                          <span className="text-[9px] font-bold uppercase text-slate-400 mt-2 block">
+                            {msg.senderName} • {new Date(msg.timestamp).toLocaleTimeString()}
+                          </span>
+                       </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-6 bg-white border-t border-slate-200">
+                  <div className="flex gap-4">
+                    <Input
+                      value={adminReply}
+                      onChange={(e) => setAdminReply(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && sendAdminReply()}
+                      placeholder="Transmit message to user endpoint..."
+                      className="h-12 border-slate-200 rounded-none shadow-none text-xs"
+                    />
+                    <Button 
+                      onClick={sendAdminReply}
+                      className="h-12 bg-slate-900 text-white px-8 rounded-none font-bold"
+                    >
+                      SEND
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-slate-400">
+                <div className="text-center">
+                   <Bot className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                   <p className="text-xs font-bold uppercase tracking-widest">Select an active session to begin</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

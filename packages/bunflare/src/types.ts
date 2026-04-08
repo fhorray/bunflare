@@ -361,3 +361,19 @@ export interface SEOOptions {
   /** Additional dynamic meta tags (e.g., { "og:type": "article" }). */
   [key: string]: string | undefined;
 }
+
+export interface WebSocketBinding {
+  /** 
+   * Encaminha a requisição HTTP de Upgrade para o Durable Object (Sala).
+   * Faz o sharding automático com base no roomId.
+   */
+  connect(request: Request, env: any, roomId?: string): Promise<Response>;
+}
+
+export interface WebSocketOptions {
+  open?(ws: any, request: Request): void | Promise<void>;
+  message?(ws: any, message: string | ArrayBuffer): void | Promise<void>;
+  close?(ws: any, code: number, reason: string, wasClean: boolean): void | Promise<void>;
+  error?(ws: any, error: any): void | Promise<void>;
+  [key: string]: any;
+}

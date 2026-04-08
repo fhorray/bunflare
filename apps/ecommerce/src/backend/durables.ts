@@ -1,4 +1,4 @@
-import { durable } from "bunflare";
+import { durable, websocket } from "bunflare";
 import type { CloudflareBindings, DurableObjectState } from "bunflare";
 
 export const StockManager = durable({
@@ -20,32 +20,90 @@ export const StockManager = durable({
   }
 });
 
-export const LiveChat = durable({
-  async fetch(request: Request, state: DurableObjectState, env: CloudflareBindings) {
-    const pair = new (globalThis as any).WebSocketPair();
-    const server = pair[1];
-    (server as any).serialize = () => ({});
-    (server as any).subscribe("support");
-    return new Response(null, { status: 101, webSocket: pair[0] } as any);
+export const LiveChat = websocket({
+  // Memory-based history buffer
+  history: [] as any[],
+
+  async open(ws, request: Request) {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId") || "anonymous";
+    const username = url.searchParams.get("name") || "Guest";
+    const isAdmin = url.searchParams.get("admin") === "true";
+
+    // Store identity on the socket for message context
+    (ws as any).userId = userId;
+    (ws as any).username = username;
+    (ws as any).isAdmin = isAdmin;
+
+    if (isAdmin) {
+      console.log(`[LiveChat] Admin ${username} connected to Support Hub`);
+      ws.subscribe("support-hub");
+      
+      // Replay history to admin (one-by-one)
+      this.history.forEach(msg => ws.send(JSON.stringify(msg)));
+    } else {
+      console.log(`[LiveChat] User ${username} (${userId}) connected to private thread`);
+      ws.subscribe(`support:${userId}`);
+      
+      // Replay ONLY relevant history to this specific user
+      this.history
+        .filter(msg => msg.userId === userId)
+        .forEach(msg => ws.send(JSON.stringify(msg)));
+    }
   },
-  async webSocketMessage(ws: WebSocket, message: string) {
+
+  async message(ws, message) {
+    const isAdmin = (ws as any).isAdmin;
+    const userId = (ws as any).userId;
+    const username = (ws as any).username;
+
     try {
-      const data = JSON.parse(message);
-      // Broadcast the message to everyone subscribed to 'support'
-      ws.publish("support", JSON.stringify({
-        from: data.from || "User",
-        role: data.role || "user",
-        text: data.text || message,
-        time: new Date().toISOString()
-      }));
+      const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+      const data = JSON.parse(text);
+      
+      let payloadObj: any;
+      const now = new Date().toISOString();
+      const randomId = Math.random().toString(36).substring(7);
+
+      if (isAdmin) {
+        const targetId = data.targetId;
+        if (!targetId || targetId === 'admin') return;
+
+        payloadObj = {
+          id: `msg_${Date.now()}_${randomId}`,
+          text: data.text,
+          sender: "agent",
+          senderName: username,
+          timestamp: now,
+          userId: targetId // Always group by the customer ID
+        };
+
+        const payload = JSON.stringify(payloadObj);
+        ws.send(payload); // Echo to current admin
+        ws.publish(`support:${targetId}`, payload);
+        ws.publish("support-hub", payload); // Sync other admins
+      } else {
+        payloadObj = {
+          id: `msg_${Date.now()}_${randomId}`,
+          text: data.text,
+          sender: "user",
+          senderName: username,
+          timestamp: now,
+          userId: userId // Group by this user ID
+        };
+
+        const payload = JSON.stringify(payloadObj);
+        ws.send(payload); // Echo to user (IMPORTANT for UI)
+        ws.publish(`support:${userId}`, payload); // Sync other user tabs (same user ID)
+        ws.publish("support-hub", payload); // Send to admin hub
+      }
+
+      // Save to history (keep last 100)
+      this.history.push(payloadObj);
+      if (this.history.length > 100) this.history.shift();
+      
     } catch (e) {
-      // Fallback for plain text messages
-      ws.publish("support", JSON.stringify({
-        from: "User",
-        role: "user",
-        text: message,
-        time: new Date().toISOString()
-      }));
+      console.error("[LiveChat] Error processing message:", e);
     }
   }
 });

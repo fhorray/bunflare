@@ -51,7 +51,7 @@ export function transformSource(source: string, filename: string = "index.tsx", 
             const importedName = spec.imported.name || spec.imported.value;
             bunflareImports.set(importedName, spec.local.name);
 
-            if (["durable", "workflow", "container", "browser", "queue", "cron"].includes(importedName)) {
+            if (["durable", "workflow", "container", "browser", "queue", "cron", "websocket"].includes(importedName)) {
               const sSpan = spec.span || {};
               const sStart = spec.start ?? sSpan.start;
               const sEnd = spec.end ?? sSpan.end;
@@ -167,8 +167,9 @@ export function transformSource(source: string, filename: string = "index.tsx", 
       const isBrowser = calleeName === (bunflareImports.get("browser") || "browser") && !isShadowed(calleeName, ancestors);
       const isQueue = calleeName === (bunflareImports.get("queue") || "queue") && !isShadowed(calleeName, ancestors);
       const isCron = calleeName === (bunflareImports.get("cron") || "cron") && !isShadowed(calleeName, ancestors);
+      const isWebSocket = calleeName === (bunflareImports.get("websocket") || "websocket") && !isShadowed(calleeName, ancestors);
 
-      if (isDurable || isWorkflow || isContainer || isBrowser || isQueue || isCron) {
+      if (isDurable || isWorkflow || isContainer || isBrowser || isQueue || isCron || isWebSocket) {
         if (isWorkflow) hasWorkflow = true;
         if (isContainer) hasContainer = true;
 
@@ -313,6 +314,119 @@ export function transformSource(source: string, filename: string = "index.tsx", 
       console.error("[Bunflare Browser] Launch error:", e);
       return new Response("Puppeteer Launch Error: " + e.message, { status: 500 });
     }
+  }
+}`;
+          } else if (isWebSocket) {
+            replacement = `class ${name} {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    Object.assign(this, ${options});
+    this.$$handler = this;
+  }
+
+  static async connect(request, env, roomId = "default") {
+    const name = "${name}";
+    const binding = env[name] || env[name.toUpperCase()] || env[name.replace(/([A-Z])/g, "_$1").toUpperCase().replace(/^_/, "")];
+    if (!binding) return new Response("WebSocket Binding " + name + " (or " + name.toUpperCase() + " / " + name.replace(/([A-Z])/g, "_$1").toUpperCase().replace(/^_/, "") + ") not found.", { status: 500 });
+    const id = binding.idFromName(roomId);
+    const stub = binding.get(id);
+    // Use request.clone() for the loopback to avoid body consumption issues
+    return stub.fetch(request.clone());
+  }
+
+  async fetch(request) {
+    try {
+      if (request.headers.get("Upgrade") !== "websocket") {
+        return new Response("OK", { status: 200 });
+      }
+      
+      const pair = new WebSocketPair();
+      let client = pair[0];
+      let server = pair[1];
+      
+      if (!client || !server) {
+        const values = Object.values(pair);
+        client = values[0];
+        server = values[1];
+      }
+
+      if (!client || !server) {
+        throw new Error("Could not extract sockets from WebSocketPair.");
+      }
+
+      // 1. Wrap the socket and run the open handler to collect tags
+      const wrapped = this.$$wrapWS(server);
+      if (this.open) await this.open.call(this, wrapped, request);
+      
+      // 2. Accept the socket into the hibernation system with collected tags
+      const tags = server.$$tags ? Array.from(server.$$tags) : [];
+      this.state.acceptWebSocket(server, tags);
+      server.$$accepted = true;
+      
+      return new Response(null, { 
+        status: 101, 
+        webSocket: client 
+      });
+    } catch (e) {
+      console.error("[WebSocket DO Handshake Error]", e);
+      return new Response(JSON.stringify({ 
+        error: e.message, 
+        stack: e.stack,
+        timestamp: new Date().toISOString()
+      }), { 
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+  }
+
+  $$wrapWS(ws) {
+    const self = this;
+    return new Proxy(ws, {
+      get(target, prop) {
+        if (prop === "subscribe") return (topic) => {
+          if (!target.$$tags) target.$$tags = new Set();
+          target.$$tags.add(topic);
+          // If already accepted, update tags dynamically
+          if (target.$$accepted) {
+            const tags = Array.from(target.$$tags);
+            if (self.state.setWebSocketTags) {
+              self.state.setWebSocketTags(target, tags);
+            } else {
+              // Fallback to re-acceptance if supported/necessary by runtime
+              self.state.acceptWebSocket(target, tags);
+            }
+          }
+        };
+        if (prop === "publish") return (topic, data) => self.publish(topic, data, target);
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+      set(target, prop, value) {
+        target[prop] = value;
+        return true;
+      }
+    });
+  }
+
+  publish(topic, data, exclude) {
+    const sockets = this.state.getWebSockets(topic);
+    for (const s of sockets) {
+      if (s !== exclude) s.send(data);
+    }
+  }
+
+  async webSocketMessage(ws, message) {
+    if (this.message) return await this.message.call(this, this.$$wrapWS(ws), message);
+  }
+
+  async webSocketClose(ws, code, reason, wasClean) {
+    if (this.close) return await this.close.call(this, this.$$wrapWS(ws), code, reason, wasClean);
+  }
+
+  async webSocketError(ws, error) {
+    if (this.error) return await this.error.call(this, this.$$wrapWS(ws), error);
   }
 }`;
           }
