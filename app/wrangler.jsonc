@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bunflare-test-app",
+  "main": "dist/index.js",
+  "compatibility_date": "2024-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_NAME": "BunFlare Production"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sozial-dev",
+      "database_id": "7fffc946-2713-43da-8163-26ab07d0ab46"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "MY_KV",
+      "id": "73cb2c83392c42ba9b6383a74f744198"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "dist/public"
+  },
+  "build": {
+    "command": "bun run build.ts",
+    "watch_dir": [
+      "./index.ts",
+      "./build.ts",
+      "./src",
+      "./public",
+      "../plugin"
+    ]
+  }
+}
