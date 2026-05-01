@@ -242,7 +242,8 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
 
       // Resolve HTML imports (Frontend assets)
       build.onResolve({ filter: /\.html$/ }, (args) => {
-        return { path: args.path, namespace: "bunflare-asset" };
+        const resolvedPath = join(args.resolveDir, args.path);
+        return { path: resolvedPath, namespace: "bunflare-asset" };
       });
 
       // 2. Load virtual module contents
@@ -259,18 +260,9 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
 
       // 3. Load HTML asset shims
       build.onLoad({ filter: /.*/, namespace: "bunflare-asset" }, (args) => {
+        const content = readFileSync(args.path, "utf8");
         return {
-          contents: `
-            export default async (req, server) => {
-              const assets = server?.cloudflare?.env?.ASSETS;
-              if (assets && typeof assets.fetch === "function") {
-                // If it's the root import, we might want to fetch index.html
-                // but usually the requester already has the right URL.
-                return await assets.fetch(req);
-              }
-              return new Response("Cloudflare ASSETS binding not found. Ensure 'assets = { directory: \\"./public\\" }' is in your wrangler.jsonc", { status: 500 });
-            };
-          `,
+          contents: `export default ${JSON.stringify(content)};`,
           loader: "ts"
         };
       });

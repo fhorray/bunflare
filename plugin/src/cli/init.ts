@@ -185,9 +185,15 @@ export async function init() {
 
   if (template === "hono") {
     entryContent = `import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
 import indexHtml from "../public/index.html";
 
 const app = new Hono();
+
+// Serve static files from the public directory
+app.use("/public/*", serveStatic({ root: "./" }));
+app.use("/favicon.ico", serveStatic({ path: "./public/favicon.ico" }));
+app.use("/logo.png", serveStatic({ path: "./public/logo.png" }));
 
 app.get("/", (c) => c.html(indexHtml));
 
@@ -323,6 +329,16 @@ export default server;
   if (template !== "none" && !existsSync(join(projectDir, entrypoint))) {
     writeFileSync(join(projectDir, entrypoint), entryContent);
     p.log.success(`Created ${entrypoint}`);
+  }
+
+  // bunfig.toml (Crucial for dev:local and HTML imports)
+  const bunfigPath = join(projectDir, "bunfig.toml");
+  if (!existsSync(bunfigPath)) {
+    writeFileSync(bunfigPath, `[loader]
+".html" = "text"
+".svg" = "text"
+`);
+    p.log.success("Created bunfig.toml");
   }
 
   // 5. Create config files

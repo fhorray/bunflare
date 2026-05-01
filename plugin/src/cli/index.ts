@@ -198,58 +198,69 @@ if (command === "init") {
     console.log(`${pc.cyan("🚀 starting bunflare in local-only mode...")}`);
     const config = await loadConfig();
     const entrypoint = config?.entrypoint || "./index.ts";
-    spawn("bun", ["--hot", entrypoint], { stdio: "inherit" });
-    process.exit(0);
-  }
+    const child = spawn("bun", ["--hot", entrypoint], { stdio: "inherit" });
 
-  console.log(`${pc.yellow("🚀 starting bunflare dev mode...")}`);
-
-  // 1. Initial Build
-  runBuild(true).then((success) => {
-    if (!success) {
-      process.exit(1);
-    }
-
-    // 2. Start Watcher
-    let debounceTimer: NodeJS.Timeout;
-    const watcher = watch(process.cwd(), { recursive: true }, (event, filename) => {
-      if (!filename) return;
-      const normalized = filename.replace(/\\/g, "/");
-      if (
-        normalized.startsWith("dist") ||
-        normalized.startsWith(".wrangler") ||
-        normalized.includes("node_modules") ||
-        normalized.startsWith(".git")
-      ) return;
-
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        process.stdout.write(`${pc.yellow("↻")} ${pc.gray(`change in ${normalized}, rebuilding... `)}`);
-        await runBuild(true, true);
-      }, 150);
-    });
-
-    // 3. Start Wrangler (Pure mode, no build-command)
-    const wranglerArgs = ["dev", "--live-reload", ...args.slice(1)];
-    const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
-    const child = spawn(command, wranglerArgs, {
-      stdio: "inherit",
+    child.on("exit", (code) => {
+      process.exit(code ?? 0);
     });
 
     const cleanup = () => {
-      watcher.close();
       child.kill();
       process.exit(0);
     };
 
     process.on("SIGINT", cleanup);
     process.on("SIGTERM", cleanup);
+  } else {
+    console.log(`${pc.yellow("🚀 starting bunflare dev mode...")}`);
 
-    child.on("exit", (code) => {
-      watcher.close();
-      process.exit(code ?? 0);
+    // 1. Initial Build
+    runBuild(true).then((success) => {
+      if (!success) {
+        process.exit(1);
+      }
+
+      // 2. Start Watcher
+      let debounceTimer: NodeJS.Timeout;
+      const watcher = watch(process.cwd(), { recursive: true }, (event, filename) => {
+        if (!filename) return;
+        const normalized = filename.replace(/\\/g, "/");
+        if (
+          normalized.startsWith("dist") ||
+          normalized.startsWith(".wrangler") ||
+          normalized.includes("node_modules") ||
+          normalized.startsWith(".git")
+        ) return;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          process.stdout.write(`${pc.yellow("↻")} ${pc.gray(`change in ${normalized}, rebuilding... `)}`);
+          await runBuild(true, true);
+        }, 150);
+      });
+
+      // 3. Start Wrangler (Pure mode, no build-command)
+      const wranglerArgs = ["dev", "--live-reload", ...args.slice(1)];
+      const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
+      const child = spawn(command, wranglerArgs, {
+        stdio: "inherit",
+      });
+
+      const cleanup = () => {
+        watcher.close();
+        child.kill();
+        process.exit(0);
+      };
+
+      process.on("SIGINT", cleanup);
+      process.on("SIGTERM", cleanup);
+
+      child.on("exit", (code) => {
+        watcher.close();
+        process.exit(code ?? 0);
+      });
     });
-  });
+  }
 } else if (command === "deploy") {
   console.log(`${pc.green("🚀 preparing production build...")}`);
   runBuild(false).then((success) => {
