@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { getServeShim } from "../plugin/shims/serve.ts";
+import { getServeShim } from "../plugin/src/shims/serve.ts";
 
 describe("Routing Shim", () => {
   test("getServeShim generates routing logic", () => {
@@ -7,9 +7,8 @@ describe("Routing Shim", () => {
 
     // Check for core routing elements
     expect(shim).toContain("const { routes, fetch: fallbackFetch, development } = options;");
-    expect(shim).toContain("pattern: new URLPattern({ pathname: pattern })");
-    expect(shim).toContain("const match = pattern.exec(request.url)");
-    expect(shim).toContain("(request as any).params = match.pathname.groups;");
+    expect(shim).toContain("const normalizedReqPath = url.pathname === \"/\" ? \"/\" : url.pathname.replace(/\\/$/, \"\");");
+    expect(shim).toContain("if (pathParts[i].startsWith(\":\")) {");
     expect(shim).toContain("response = await handler(request, server)");
   });
 

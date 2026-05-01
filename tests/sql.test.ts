@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { createSQL, SQLFragment } from "../plugin/shims/d1/logic.ts";
+import { createSQL, SQLFragment } from "../plugin/src/shims/d1/logic.ts";
 
 describe("SQLFragment", () => {
   test("should hold text and params", () => {

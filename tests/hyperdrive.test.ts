@@ -1,5 +1,5 @@
 import { describe, expect, test, mock } from "bun:test";
-import { createSQL } from "../plugin/shims/hyperdrive/logic.ts";
+import { createSQL } from "../plugin/src/shims/hyperdrive/logic.ts";
 
 // Mock the postgres driver
 mock.module("postgres", () => {

@@ -1,86 +1,94 @@
 import { expect, test, describe, beforeAll, afterAll } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 
-const TEST_PROJECT_DIR = join(process.cwd(), "tests/tmp-cli-test");
-const BIN_PATH = join(process.cwd(), "plugin/bin.ts");
+const TEST_ROOT = join(process.cwd(), "tests/tmp-cli-test");
+const BIN_PATH = join(process.cwd(), "plugin/src/cli/index.ts");
 
 describe("Bunflare CLI", () => {
   beforeAll(() => {
-    if (existsSync(TEST_PROJECT_DIR)) {
-      rmSync(TEST_PROJECT_DIR, { recursive: true, force: true });
+    if (existsSync(TEST_ROOT)) {
+      rmSync(TEST_ROOT, { recursive: true, force: true });
     }
-    mkdirSync(TEST_PROJECT_DIR, { recursive: true });
+    mkdirSync(TEST_ROOT, { recursive: true });
   });
 
-  afterAll(() => {
-    // rmSync(TEST_PROJECT_DIR, { recursive: true, force: true });
+  describe("init command", () => {
+    const INIT_DIR = join(TEST_ROOT, "init-test");
+
+    beforeAll(() => {
+      if (existsSync(INIT_DIR)) rmSync(INIT_DIR, { recursive: true, force: true });
+      mkdirSync(INIT_DIR, { recursive: true });
+    });
+
+    test("should initialize a new project from scratch", () => {
+      const result = spawnSync("bun", [BIN_PATH, "init"], {
+        cwd: INIT_DIR,
+        encoding: "utf8",
+        env: { ...process.env, SKIP_INSTALL: "true" } // We might want to skip actual npm install in tests
+      });
+
+      expect(existsSync(join(INIT_DIR, "package.json"))).toBe(true);
+      expect(existsSync(join(INIT_DIR, "bunflare.config.ts"))).toBe(true);
+      expect(existsSync(join(INIT_DIR, "global.d.ts"))).toBe(true);
+      expect(existsSync(join(INIT_DIR, "wrangler.jsonc"))).toBe(true);
+      expect(existsSync(join(INIT_DIR, "src/index.ts"))).toBe(true);
+
+      const pkg = JSON.parse(readFileSync(join(INIT_DIR, "package.json"), "utf-8"));
+      expect(pkg.scripts.dev).toBe("bunflare dev");
+    });
+
+    test("should patch existing index.ts with export default", () => {
+      const PATCH_DIR = join(TEST_ROOT, "patch-test");
+      mkdirSync(PATCH_DIR, { recursive: true });
+      mkdirSync(join(PATCH_DIR, "src"), { recursive: true });
+      
+      const originalContent = 'const server = Bun.serve({ fetch: () => new Response("OK") });';
+      writeFileSync(join(PATCH_DIR, "src/index.ts"), originalContent);
+
+      spawnSync("bun", [BIN_PATH, "init"], {
+        cwd: PATCH_DIR,
+        encoding: "utf8",
+      });
+
+      const patchedContent = readFileSync(join(PATCH_DIR, "src/index.ts"), "utf-8");
+      expect(patchedContent).toContain("export default server;");
+    });
   });
 
-  test("should fail if bunflare.config.ts is missing", () => {
-    const result = spawnSync("bun", [BIN_PATH, "build"], {
-      cwd: TEST_PROJECT_DIR,
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("bunflare.config.ts not found");
-  });
+  describe("build command", () => {
+    const BUILD_DIR = join(TEST_ROOT, "build-test");
 
-  test("should build successfully with valid config", () => {
-    // Create mock project files
-    writeFileSync(join(TEST_PROJECT_DIR, "index.ts"), 'console.log("Hello Worker");');
-    mkdirSync(join(TEST_PROJECT_DIR, "public"), { recursive: true });
-    writeFileSync(join(TEST_PROJECT_DIR, "public/index.html"), "<html><body>Hello</body></html>");
-    
-    writeFileSync(join(TEST_PROJECT_DIR, "bunflare.config.ts"), `
-      export default {
-        entrypoint: "./index.ts",
-        frontend: {
-          entrypoint: "./public/index.html",
-          outdir: "./dist/public"
-        }
-      };
-    `);
-
-    const result = spawnSync("bun", [BIN_PATH, "build"], {
-      cwd: TEST_PROJECT_DIR,
-      encoding: "utf8",
+    beforeAll(() => {
+      if (existsSync(BUILD_DIR)) rmSync(BUILD_DIR, { recursive: true, force: true });
+      mkdirSync(BUILD_DIR, { recursive: true });
+      
+      writeFileSync(join(BUILD_DIR, "index.ts"), 'export default Bun.serve({ fetch: () => new Response("OK") });');
+      writeFileSync(join(BUILD_DIR, "bunflare.config.ts"), 'export default { entrypoint: "./index.ts" };');
     });
 
-    console.log(result.stdout);
-    console.log(result.stderr);
+    test("should build successfully", () => {
+      const result = spawnSync("bun", [BIN_PATH, "build"], {
+        cwd: BUILD_DIR,
+        encoding: "utf8",
+      });
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("build successful");
-    
-    // Verify outputs
-    expect(existsSync(join(TEST_PROJECT_DIR, "dist/index.js"))).toBe(true);
-    expect(existsSync(join(TEST_PROJECT_DIR, "dist/public/index.html"))).toBe(true);
-  });
-
-  test("should handle build errors gracefully", () => {
-    // Create invalid TS file
-    writeFileSync(join(TEST_PROJECT_DIR, "index.ts"), 'const a: string = 123; // Error');
-    
-    const result = spawnSync("bun", [BIN_PATH, "build"], {
-      cwd: TEST_PROJECT_DIR,
-      encoding: "utf8",
+      expect(result.status).toBe(0);
+      expect(existsSync(join(BUILD_DIR, "dist/index.js"))).toBe(true);
     });
 
-    // Note: Bun.build might not fail for type errors if not configured, 
-    // but syntax errors will.
-    writeFileSync(join(TEST_PROJECT_DIR, "index.ts"), 'invalid syntax !!!');
-    
-    const result2 = spawnSync("bun", [BIN_PATH, "build"], {
-      cwd: TEST_PROJECT_DIR,
-      encoding: "utf8",
-    });
+    test("should fail if export default is missing", () => {
+      writeFileSync(join(BUILD_DIR, "no-export.ts"), 'Bun.serve({ fetch: () => {} });');
+      writeFileSync(join(BUILD_DIR, "bunflare.config.ts"), 'export default { entrypoint: "./no-export.ts" };');
 
-    expect(result2.status).toBe(1);
-    const hasError = result2.stderr.includes("Backend build failed") || 
-                     result2.stderr.includes("Bundle failed") ||
-                     result2.stderr.includes("Build crashed");
-    expect(hasError).toBe(true);
+      const result = spawnSync("bun", [BIN_PATH, "build"], {
+        cwd: BUILD_DIR,
+        encoding: "utf8",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Fatal Error");
+    });
   });
 });

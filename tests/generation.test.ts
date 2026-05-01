@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { getSqlTagShim } from "../plugin/shims/d1/sql.ts";
+import { getSqlTagShim } from "../plugin/src/shims/d1/sql.ts";
 
 describe("Shim Generation", () => {
   test("getSqlTagShim generates valid D1 SQL shim", () => {

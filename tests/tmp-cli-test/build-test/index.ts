@@ -1,0 +1,1 @@
+export default Bun.serve({ fetch: () => new Response("OK") });

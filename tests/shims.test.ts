@@ -1,8 +1,8 @@
 import { expect, test, describe, spyOn } from "bun:test";
-import { getRedisShim } from "../plugin/shims/redis/index.ts";
-import { getR2Shim } from "../plugin/shims/r2.ts";
-import { getCryptoShim } from "../plugin/shims/crypto.ts";
-import { getD1DatabaseShim } from "../plugin/shims/d1/database.ts";
+import { getRedisShim } from "../plugin/src/shims/redis/index.ts";
+import { getR2Shim } from "../plugin/src/shims/r2.ts";
+import { getCryptoShim } from "../plugin/src/shims/crypto.ts";
+import { getD1DatabaseShim } from "../plugin/src/shims/d1/database.ts";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 

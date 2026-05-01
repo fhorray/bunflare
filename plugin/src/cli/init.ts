@@ -40,9 +40,43 @@ export async function init() {
 
   // 2. Discover entrypoint
   let entrypoint = "./index.ts";
-  if (existsSync(join(cwd, "src", "index.ts"))) {
-    entrypoint = "./src/index.ts";
-  } else if (!existsSync(join(cwd, "index.ts")) && !existsSync(join(cwd, "src", "index.ts"))) {
+  const possiblePaths = [join(cwd, "index.ts"), join(cwd, "src", "index.ts"), join(cwd, "index.js")];
+  const existingPath = possiblePaths.find(p => existsSync(p));
+
+  if (existingPath) {
+    entrypoint = "./" + join(existingPath.replace(cwd, "").replace(/^[\\\/]/, "")).replace(/\\/g, "/");
+    
+    // Patch existing file if missing export default
+    try {
+      let content = readFileSync(existingPath, "utf-8");
+      if (!content.includes("export default")) {
+        console.log(`${pc.yellow(`⚠ Entrypoint ${pc.cyan(entrypoint)} is missing 'export default'. Patching...`)}`);
+        
+        const isBunServe = content.includes("Bun.serve(");
+        const isServeImported = content.includes("serve(");
+
+        if (isBunServe || isServeImported) {
+          const serveRegex = isBunServe ? /Bun\.serve\(/ : /serve\(/;
+          const serveStr = isBunServe ? "Bun.serve" : "serve";
+
+          // Try to wrap serve if it's naked
+          if (!content.includes(`const server = ${serveStr}`) && !content.includes(`let server = ${serveStr}`)) {
+            content = content.replace(serveRegex, `const server = ${serveStr}(`);
+            content += "\nexport default server;\n";
+          } else {
+            // It's already in a variable, just need the export
+            const varNameRegex = new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*${serveStr.replace(".", "\\.")}`);
+            const varName = content.match(varNameRegex)?.[1] || "server";
+            content += `\nexport default ${varName};\n`;
+          }
+          writeFileSync(existingPath, content);
+          console.log(`${pc.green("✓")} Patched ${entrypoint} with export default`);
+        } else {
+          console.log(`${pc.yellow(`  ↳ Could not find 'Bun.serve' or 'serve' to auto-patch. Please add 'export default server;' manually.`)}`);
+        }
+      }
+    } catch (e) {}
+  } else {
     // Create a basic index.ts if nothing exists
     console.log(`${pc.yellow("⚠ No entrypoint found. Creating a basic src/index.ts...")}`);
     if (!existsSync(join(cwd, "src"))) {
@@ -75,18 +109,25 @@ export default server;
   // 3. Create bunflare.config.ts
   const configPath = join(cwd, "bunflare.config.ts");
   if (!existsSync(configPath)) {
-    const configContent = `import type { BunflareConfig } from "bunflare";
+    let hasTailwind = false;
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      hasTailwind = pkg.dependencies?.["bun-plugin-tailwind"] || pkg.devDependencies?.["bun-plugin-tailwind"];
+    } catch (e) {}
 
+    const configContent = `import { bunflare, type BunflareConfig } from "bunflare";
+${hasTailwind ? 'import tailwind from "bun-plugin-tailwind";\n' : ""}
 export default {
   entrypoint: "${entrypoint}",
   frontend: {
     entrypoint: "${entrypoint.endsWith(".html") ? entrypoint : entrypoint.replace(/\.ts$/, ".html")}",
     outdir: "./dist/public",
   },
+  ${hasTailwind ? "plugins: [tailwind]," : ""}
 } satisfies BunflareConfig;
 `;
     writeFileSync(configPath, configContent);
-    console.log(`${pc.green("✓")} Created bunflare.config.ts`);
+    console.log(`${pc.green("✓")} Created bunflare.config.ts ${hasTailwind ? pc.gray("(with tailwind detected)") : ""}`);
   }
 
   // 4. Create global.d.ts

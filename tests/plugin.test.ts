@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { bunflare } from "../plugin/index.ts";
+import { bunflare } from "../plugin/src/index.ts";
 
 describe("bunflare plugin unit tests", () => {
   test("plugin should have a name", () => {

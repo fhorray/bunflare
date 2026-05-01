@@ -1,5 +1,5 @@
 import { expect, test, describe, beforeAll, afterAll } from "bun:test";
-import { bunflare } from "../plugin/index.ts";
+import { bunflare } from "../plugin/src/index.ts";
 import { rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
