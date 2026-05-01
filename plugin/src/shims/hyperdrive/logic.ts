@@ -31,7 +31,10 @@ export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysq
     }
 
     if (driver === "postgres") {
-      const { default: postgres } = await import("postgres") as unknown as { default: (conn: string, opts?: unknown) => PostgresClient };
+      // Dynamic import using Function to avoid tsc resolution errors.
+      // 'postgres' is an optional peer dependency installed by the user.
+      const importFn = new Function("m", "return import(m)") as (m: string) => Promise<{ default: (conn: string, opts?: unknown) => PostgresClient }>;
+      const { default: postgres } = await importFn("postgres");
       // Create a single-connection client per query. Hyperdrive handles the actual pooling.
       const client = postgres(hyperdrive.connectionString, {
         max: 1,
@@ -43,7 +46,10 @@ export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysq
         await client.end();
       }
     } else if (driver === "pg") {
-      const { Client } = await import("pg") as unknown as { Client: new (config: { connectionString: string }) => PGClient };
+      // Dynamic import using Function to avoid tsc resolution errors.
+      // 'pg' is an optional peer dependency installed by the user.
+      const importFn = new Function("m", "return import(m)") as (m: string) => Promise<{ Client: new (config: { connectionString: string }) => PGClient }>;
+      const { Client } = await importFn("pg");
       const client = new Client({ connectionString: hyperdrive.connectionString });
       await client.connect();
       try {
@@ -64,7 +70,7 @@ export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysq
     const execute = async () => {
       return executeQuery(async (client) => {
         if (driver === "postgres") {
-          return await client(strings, ...values);
+          return await (client as PostgresClient)(strings, ...values);
         }
 
         if (driver === "pg") {
@@ -72,7 +78,7 @@ export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysq
           for (let i = 1; i < strings.length; i++) {
             queryText += `$${i}${strings[i] || ""}`;
           }
-          const res = await client.query(queryText, values);
+          const res = await (client as PGClient).query(queryText, values);
           return res.rows;
         }
       });
@@ -96,15 +102,15 @@ export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysq
   // Expose unsafe for raw queries
   const unsafe = async (str: string) => {
     return executeQuery(async (client) => {
-      if (driver === "postgres") return await client.unsafe(str);
+      if (driver === "postgres") return await (client as PostgresClient).unsafe(str);
       if (driver === "pg") {
-        const res = await client.query(str);
+        const res = await (client as PGClient).query(str);
         return res.rows;
       }
     });
   };
 
-  (sql as any).unsafe = unsafe;
+  (sql as unknown as { unsafe: typeof unsafe }).unsafe = unsafe;
 
   return sql as typeof sql & { unsafe: typeof unsafe };
 }
