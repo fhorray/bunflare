@@ -227,10 +227,20 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
     name: "bunflare",
     setup(build) {
       // 1. Resolve virtual modules and mark drivers as external
+      const nodeBuiltins = /^(node:.*|assert|buffer|console|crypto|dns|events|fs|http|http2|https|module|net|os|path|perf_hooks|process|querystring|readline|stream|string_decoder|timers|tls|trace_events|tty|url|util|v8|vm|zlib)$/;
+      build.onResolve({ filter: nodeBuiltins }, (args) => {
+        return { path: args.path, external: true };
+      });
+
       build.onResolve({ filter: /^(bun|bun:.*|bunflare:.*|postgres|pg|mysql2)$/ }, (args) => {
-        // Handle database drivers (bundle them)
+        // Handle database drivers (explicitly resolve and normalize for Windows)
         if (/^(postgres|pg|mysql2)$/.test(args.path)) {
-          return undefined; // Let Bun resolve and bundle them
+          try {
+            const resolved = Bun.resolveSync(args.path, args.resolveDir);
+            return { path: resolved.replace(/\\/g, "/") };
+          } catch (e) {
+            return undefined;
+          }
         }
 
         // Avoid infinite recursion
@@ -242,7 +252,7 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
 
       // Resolve HTML imports (Frontend assets)
       build.onResolve({ filter: /\.html$/ }, (args) => {
-        const resolvedPath = join(args.resolveDir, args.path);
+        const resolvedPath = join(args.resolveDir, args.path).replace(/\\/g, "/");
         return { path: resolvedPath, namespace: "bunflare-asset" };
       });
 
@@ -269,7 +279,7 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
 
       // Apply global replacements and preambles to all source files
       build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, (args) => {
-        if (args.namespace === "bunflare") return;
+        if (args.namespace === "bunflare" || args.path.includes("node_modules")) return;
 
         let contents = readFileSync(args.path, "utf8");
         let modified = false;

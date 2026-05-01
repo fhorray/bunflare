@@ -20,6 +20,10 @@ export function serve(options) {
   }
 
   return {
+    id: "bunflare-server",
+    url: new URL("http://localhost"),
+    hostname: "localhost",
+    port: 3000,
     async fetch(request, env, ctx) {
       setEnv(env);
       const url = new URL(request.url);
@@ -72,7 +76,7 @@ export function serve(options) {
 
           if (isMatch) {
             console.log(\`[BUNFLARE] 🎯 Match found: \${path}\`);
-            (request as any).params = params;
+            (request as unknown as { params: Record<string, string> }).params = params;
             
             if (typeof handler === "object" && handler !== null) {
               const methodHandler = handler[request.method];
