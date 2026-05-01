@@ -1,6 +1,6 @@
 {
   "name": "bunflare",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Bunflare plugin for full-stack Cloudflare Workers applications",
   "main": "src/index.ts",
   "bin": {
@@ -14,12 +14,27 @@
     "./hono": "./src/hono.ts",
     "./*": "./src/*.ts"
   },
+  "typesVersions": {
+    "*": {
+      "hono": ["./src/hono.ts"],
+      "*": ["./src/*.ts"]
+    }
+  },
+  "peerDependencies": {
+    "hono": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "hono": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "@clack/prompts": "^0.9.1",
     "livereload": "^0.10.3",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
-    "@types/livereload": "^0.9.5"
+    "@types/livereload": "^0.9.5",
+    "hono": "^4.12.16"
   }
 }
