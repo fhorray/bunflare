@@ -1,7 +1,31 @@
 {
   "name": "bunflare",
-  "version": "0.2.5",
-  "description": "Bunflare plugin for full-stack Cloudflare Workers applications",
+  "version": "0.2.6",
+  "description": "Write for Bun. Deploy to Cloudflare. A Bun bundler plugin that automatically replaces Bun-native APIs with Cloudflare Workers equivalents at build time.",
+  "author": "fhorray <fhorray@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "bun",
+    "cloudflare",
+    "workers",
+    "hono",
+    "fullstack",
+    "bundler",
+    "plugin",
+    "d1",
+    "kv",
+    "r2",
+    "hyperdrive",
+    "wrangler"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fhorray/bunflare.git"
+  },
+  "homepage": "https://github.com/fhorray/bunflare#readme",
+  "bugs": {
+    "url": "https://github.com/fhorray/bunflare/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
@@ -9,7 +33,6 @@
   },
   "files": [
     "dist/",
-    "assets/",
     "README.md",
     "LICENSE"
   ],
@@ -31,8 +54,12 @@
   },
   "typesVersions": {
     "*": {
-      "hono": ["./dist/hono.d.ts"],
-      "*": ["./dist/*.d.ts"]
+      "hono": [
+        "./dist/hono.d.ts"
+      ],
+      "*": [
+        "./dist/*.d.ts"
+      ]
     }
   },
   "peerDependencies": {
