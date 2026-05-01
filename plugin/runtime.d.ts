@@ -50,23 +50,22 @@ declare module "bun:sqlite" {
   }
 }
 
-declare module "bun:kv" {
-  export class KV {
-    constructor();
-    get(key: string): Promise<string | null>;
-    set(key: string, value: string | ArrayBuffer): Promise<void>;
-    delete(key: string): Promise<void>;
-  }
-}
-
 /**
  * Internal shims for preamble injection.
  * You typically don't need to import these directly.
  */
-declare module "bunflare:kv" {
+declare module "bunflare:redis" {
   export const redis: any;
   export class RedisClient {
-    constructor(options?: any);
+    constructor(name?: string);
+    get(key: string): Promise<string | null>;
+    set(key: string, value: string): Promise<void>;
+    del(key: string): Promise<void>;
+    incr(key: string): Promise<number>;
+    decr(key: string): Promise<number>;
+    exists(key: string): Promise<boolean>;
+    expire(key: string, seconds: number): Promise<void>;
+    setex(key: string, seconds: number, value: string): Promise<void>;
   }
 }
 

@@ -37,7 +37,6 @@ function discoverBindings(): Partial<BunflareOptions> {
       options.sqlite = { binding: json.d1_databases[0].binding };
     }
     if (json.kv_namespaces?.[0]) {
-      options.kv = { binding: json.kv_namespaces[0].binding };
       options.redis = { binding: json.kv_namespaces[0].binding };
     }
     if (json.r2_buckets?.[0]) {
@@ -66,7 +65,6 @@ async function runBuild(isDev = false, isRebuild = false) {
     ...discovered,
     ...userConfig,
     sqlite: userConfig.sqlite || discovered.sqlite,
-    kv: userConfig.kv || discovered.kv,
     r2: userConfig.r2 || discovered.r2,
     redis: userConfig.redis || discovered.redis,
   };
@@ -132,12 +130,13 @@ async function runBuild(isDev = false, isRebuild = false) {
 }
 
 /**
- * Executes a wrangler command.
+ * Executes a wrangler command safely without a shell.
  */
 function runWrangler(wranglerArgs: string[]) {
-  const child = spawn("wrangler", wranglerArgs, {
+  const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
+  
+  const child = spawn(command, wranglerArgs, {
     stdio: "inherit",
-    shell: true,
   });
 
   const cleanup = () => {
@@ -183,9 +182,9 @@ if (command === "dev") {
 
     // 3. Start Wrangler (Pure mode, no build-command)
     const wranglerArgs = ["dev", "--live-reload", ...args.slice(1)];
-    const child = spawn("wrangler", wranglerArgs, {
+    const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
+    const child = spawn(command, wranglerArgs, {
       stdio: "inherit",
-      shell: true,
     });
 
     const cleanup = () => {

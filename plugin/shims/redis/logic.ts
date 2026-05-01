@@ -4,43 +4,30 @@
  * the Cloudflare Workers shim and local unit tests.
  */
 
-export class KV {
-  private kv: KVNamespace;
-
-  constructor(name?: string) {
-    const env = (globalThis as unknown as { env: Record<string, unknown> }).env;
-    const binding = name || "KV"; // In the shim, this will be replaced by a template
-    
-    if (!env || !env[binding]) {
-      throw new Error(`KV Binding '${binding}' not found in environment.`);
-    }
-    this.kv = env[binding] as KVNamespace;
-  }
-
-  async get(key: string): Promise<string | null> {
-    return this.kv.get(key);
-  }
-
-  async set(key: string, value: string | ArrayBuffer): Promise<void> {
-    return this.kv.put(key, value);
-  }
-
-  async delete(key: string): Promise<void> {
-    return this.kv.delete(key);
-  }
+interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string | ArrayBuffer, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 export class RedisClient {
-  private kv: KVNamespace;
+  private _kv: KVNamespace | null = null;
+  private bindingName: string;
 
   constructor(name?: string) {
+    this.bindingName = name || "KV";
+  }
+
+  private get kv(): KVNamespace {
+    if (this._kv) return this._kv;
+
     const env = (globalThis as unknown as { env: Record<string, unknown> }).env;
-    const binding = name || "KV";
-    
-    if (!env || !env[binding]) {
-      throw new Error(`KV Binding '${binding}' (used for Redis shim) not found in environment.`);
+    if (!env || !env[this.bindingName]) {
+      throw new Error(`KV Binding '${this.bindingName}' (used for Redis shim) not found in environment.`);
     }
-    this.kv = env[binding] as KVNamespace;
+
+    this._kv = env[this.bindingName] as KVNamespace;
+    return this._kv;
   }
 
   async get(key: string): Promise<string | null> {
@@ -86,6 +73,4 @@ export class RedisClient {
   }
 }
 
-export function redis(options?: any): RedisClient {
-  return new RedisClient();
-}
+export const redis = new RedisClient();

@@ -43,8 +43,7 @@ No runtime overhead. No vendor lock-in. Just write Bun, deploy Cloudflare.
 | `Bun.env` | Worker `env` bindings | ✅ Done |
 | `bun:sqlite` / `new Database()` | Cloudflare **D1** | ✅ Done |
 | `Bun.sql` (tagged template) | Cloudflare **Hyperdrive** + any Postgres driver | ✅ Done |
-| `bun:kv` / `new KV()` | Cloudflare **KV Namespace** | ✅ Done |
-| `Bun.redis()` / `Bun.RedisClient` | Cloudflare **KV** (Redis-over-KV bridge) | ✅ Done |
+| `import { redis } from "bun"` | Cloudflare **KV** (Redis-over-KV bridge) | ✅ Done |
 | `Bun.password.hash/verify` | **WebCrypto** (PBKDF2) | ✅ Done |
 | `Bun.hash()` | **WebCrypto** (SHA-256) | ✅ Done |
 | `Bun.file()` / `Bun.write()` | Cloudflare **R2** | ✅ Done |
@@ -173,7 +172,7 @@ bun run cf-typegen  # bunx wrangler types --env-interface CloudflareBindings
 ```ts
 // index.ts
 import { Database } from "bun:sqlite";
-import { KV } from "bun:kv";
+import { redis } from "bun";
 
 export default Bun.serve({
   routes: {
@@ -181,10 +180,9 @@ export default Bun.serve({
       // bun:sqlite → D1 at deploy time
       const db = new Database("DB");
 
-      // bun:kv → KV Namespace at deploy time
-      const cache = new KV();
-      await cache.set("greeting", "Hello from Cloudflare!");
-      const greeting = await cache.get("greeting");
+      // import { redis } from "bun" → Cloudflare KV at deploy time
+      await redis.set("greeting", "Hello from Cloudflare!");
+      const greeting = await redis.get("greeting");
 
       return Response.json({ greeting });
     }
@@ -201,7 +199,7 @@ That's it. `bun run dev` and you're cooking. 🔥
 
 Bunflare hooks into Bun's bundler via a **plugin**. When you run `bunflare build`, two things happen:
 
-1. **Virtual Module Resolution**: All `bun:*` imports (like `bun:sqlite`, `bun:kv`) are intercepted and replaced with Bunflare's own shim implementations that call Cloudflare APIs instead.
+1. **Virtual Module Resolution**: All `bun:*` imports (like `bun:sqlite`) are intercepted and replaced with Bunflare's own shim implementations that call Cloudflare APIs instead.
 
 2. **Global AST Transformation**: Any reference to `Bun.*` in your source files (like `Bun.serve()`, `Bun.env`, `Bun.file()`) gets a global preamble injected that maps them to the correct Cloudflare primitives.
 
@@ -211,8 +209,7 @@ The end result is a bundled `dist/index.js` that is 100% Cloudflare Workers-comp
 Your Code (Bun)         →  Bunflare Build  →  Cloudflare Worker
 ─────────────────────────────────────────────────────────────────
 bun:sqlite              →   shim + D1       →  env.DB.prepare(...)
-bun:kv                  →   shim + KV       →  env.MY_CACHE.put(...)
-Bun.redis()             →   KV bridge       →  env.MY_CACHE.get/put(...)
+import { redis }        →   KV bridge       →  env.MY_CACHE.get/put(...)
 Bun.file() / Bun.write  →   R2 shim         →  env.MY_BUCKET.get/put(...)
 Bun.password.hash()     →   WebCrypto       →  crypto.subtle.digest(...)
 Bun.serve({ routes })   →   fetch handler   →  export default { fetch }
@@ -473,34 +470,12 @@ Your shim file must export a `sql` tagged-template function compatible with the 
 
 
 
-### `bun:kv` → Cloudflare KV
-
-A drop-in replacement for Bun's upcoming KV API using Cloudflare KV Namespaces under the hood.
-
-```ts
-import { KV } from "bun:kv";
-
-const cache = new KV();
-
-await cache.set("key", "value");
-const value = await cache.get("key");   // "value"
-await cache.delete("key");
-```
-
-**Config:**
-```ts
-bunflare({ kv: { binding: "MY_CACHE" } })
-```
-
----
-
-### `Bun.redis()` → Redis-over-KV Bridge ⚡
+### `import { redis } from "bun"` → Redis-over-KV Bridge ⚡
 
 This is one of Bunflare's most creative features. You get a Redis-compatible API backed by Cloudflare KV. Perfect for rate-limiting, counters, caching, and session management — without any external Redis instance.
 
 ```ts
-// @ts-ignore — types coming soon!
-const redis = Bun.redis();
+import { redis } from "bun";
 
 // Basic CRUD
 await redis.set("user:1:name", "Alice");
@@ -524,8 +499,6 @@ await redis.expire("session:abc123", 7200); // extend TTL
 ```ts
 bunflare({ redis: { binding: "MY_CACHE" } })
 ```
-
-> **💡 Redis-over-KV uses the same binding as `kv`.** You can point both to the same KV namespace — they're perfectly compatible.
 
 ---
 
@@ -636,8 +609,7 @@ Output:
 ```
 🚀 building fullstack app...
   ↳ sqlite shim enabled -> D1: DB
-  ↳ kv     shim enabled -> binding: MY_CACHE
-    ⚡ redis bridge active
+  ↳ redis  shim enabled -> binding: MY_CACHE
   ↳ r2     shim enabled -> binding: MY_BUCKET
   ↳ assets configured -> ./public/index.html
 ✓ build successful at 4:20:00 PM
@@ -693,8 +665,7 @@ export default {
     binding: "HYPERDRIVE",
     driver: "postgres",                  // "postgres" | "pg"
   },
-  kv:     { binding: "CACHE" },
-  redis:  { binding: "CACHE" },          // same binding, both work!
+  redis:  { binding: "CACHE" },
   r2:     { binding: "STORAGE" },
   frontend: {
     entrypoint: "./public/index.html",
@@ -755,7 +726,6 @@ await Bun.build({
   plugins: [
     bunflare({
       sqlite: { binding: "DB" },
-      kv:     { binding: "CACHE" },
       redis:  { binding: "CACHE" },
       r2:     { binding: "STORAGE" },
       frontend: {
@@ -775,10 +745,11 @@ await Bun.build({
 
 ```ts
 // index.ts
+import { redis } from "bun";
+
 export default Bun.serve({
   routes: {
     "/api/counter": async (req) => {
-      const redis = Bun.redis();
       const key = "global:visitors";
 
       if (req.method === "POST") {
@@ -1005,7 +976,9 @@ bunflare/
 │   ├── bin.ts            # CLI (bunflare dev/build/deploy)
 │   ├── types.ts          # TypeScript types
 │   ├── resolvers/        # Bun namespace resolver
-│   └── shims/            # All shim implementations
+│       ├── redis/        # import { redis } from "bun" → KV bridge shim
+│       │   ├── index.ts  # Shim generator logic
+│       │   ├── logic.ts  # Redis-over-KV class implementation
 │       ├── d1/           # bun:sqlite → D1 shim
 │       │   ├── database.ts  # Class-based Database/Statement API
 │       │   ├── logic.ts     # Bun.sql → D1 tagged template engine

@@ -4,20 +4,26 @@
  * It maps Bun.sql tagged templates to a postgres.js client.
  */
 
-interface SQLClient {
+interface PostgresClient {
   (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
   unsafe(query: string): Promise<unknown>;
+  end(): Promise<void>;
 }
 
 interface PGClient {
   connect(): Promise<void>;
   query(text: string, values?: unknown[]): Promise<{ rows: unknown[] }>;
+  end(): Promise<void>;
 }
 
 export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysql2" = "postgres") {
 
-  async function executeQuery(queryFn: (client: any) => Promise<any>) {
-    const env = (globalThis as any).__BUNFLARE_TEST_ENV__ || (globalThis as any).Bun?.env;
+  async function executeQuery(queryFn: (client: PostgresClient | PGClient) => Promise<unknown>) {
+    const global = globalThis as unknown as { 
+      __BUNFLARE_TEST_ENV__?: Record<string, unknown>, 
+      Bun?: { env: Record<string, unknown> } 
+    };
+    const env = global.__BUNFLARE_TEST_ENV__ || global.Bun?.env;
     const hyperdrive = env?.[bindingName] as { connectionString: string } | undefined;
 
     if (!hyperdrive || !hyperdrive.connectionString) {
@@ -25,8 +31,7 @@ export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysq
     }
 
     if (driver === "postgres") {
-      // @ts-ignore
-      const { default: postgres } = await import("postgres");
+      const { default: postgres } = await import("postgres") as unknown as { default: (conn: string, opts?: unknown) => PostgresClient };
       // Create a single-connection client per query. Hyperdrive handles the actual pooling.
       const client = postgres(hyperdrive.connectionString, {
         max: 1,
@@ -38,8 +43,7 @@ export function createSQL(bindingName: string, driver: "postgres" | "pg" | "mysq
         await client.end();
       }
     } else if (driver === "pg") {
-      // @ts-ignore
-      const { Client } = await import("pg");
+      const { Client } = await import("pg") as unknown as { Client: new (config: { connectionString: string }) => PGClient };
       const client = new Client({ connectionString: hyperdrive.connectionString });
       await client.connect();
       try {

@@ -6,6 +6,10 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "dist/public"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -32,9 +36,6 @@
   ],
   "observability": {
     "enabled": true
-  },
-  "assets": {
-    "directory": "dist/public"
   },
   "hyperdrive": [
     {

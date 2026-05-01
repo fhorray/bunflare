@@ -7,8 +7,8 @@ describe("Routing Shim", () => {
 
     // Check for core routing elements
     expect(shim).toContain("const { routes, fetch: fallbackFetch, development } = options;");
-    expect(shim).toContain("new URLPattern({ pathname: pattern })");
-    expect(shim).toContain("const match = urlPattern.exec(request.url)");
+    expect(shim).toContain("pattern: new URLPattern({ pathname: pattern })");
+    expect(shim).toContain("const match = pattern.exec(request.url)");
     expect(shim).toContain("(request as any).params = match.pathname.groups;");
     expect(shim).toContain("response = await handler(request, server)");
   });

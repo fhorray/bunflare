@@ -5,7 +5,7 @@
  * "any" is intentionally avoided throughout.
  */
 
-export type KnownShimPath = "sqlite" | "redis" | "kv" | "env" | "crypto" | "serve" | "r2";
+export type KnownShimPath = "sqlite" | "redis" | "env" | "crypto" | "serve" | "r2";
 
 
 // ---------------------------------------------------------------------------
@@ -18,17 +18,11 @@ export interface D1BindingConfig {
   binding: string;
 }
 
-/** Describes a Cloudflare KV namespace binding. */
-export interface KVBindingConfig {
-  /** The binding name as declared in wrangler.toml, e.g. "MY_KV". */
-  binding: string;
-}
 
 /** Describes a Redis compatibility layer over Cloudflare KV. */
 export interface RedisBindingConfig {
   /** 
    * The Cloudflare KV binding name to use for Redis emulation.
-   * If omitted, uses the default 'kv' binding.
    */
   binding?: string;
 }
@@ -72,8 +66,7 @@ export interface BunflareOptions {
   sqlite?: D1BindingConfig;
 
   /** 
-   * Map `Bun.redis` / `Bun.RedisClient` → Cloudflare KV (Emulated).
-   * @deprecated We recommend using 'bun:kv' directly for native Cloudflare performance.
+   * Map `import { redis } from "bun"` → Cloudflare KV (Emulated).
    */
   redis?: RedisBindingConfig;
 
@@ -88,11 +81,6 @@ export interface BunflareOptions {
    */
   sql?: SQLConfig;
 
-  /** 
-   * Map `bun:kv` / `Bun.kv` → Cloudflare KV.
-   * @default Automatically discovered from wrangler.jsonc (kv_namespaces[0])
-   */
-  kv?: KVBindingConfig;
 
   /**
    * Map `Bun.env` reads → the Cloudflare Workers `env` object.

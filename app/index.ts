@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
-import { KV } from "bun:kv";
+import { redis, sql } from "bun";
+import homepage from "./public/index.html";
 
 /**
  * Bunflare Fullstack App (Simplified!)
@@ -8,8 +9,14 @@ import { KV } from "bun:kv";
  * bunflare automatically proxies unknown routes to Cloudflare ASSETS
  * if the binding is present.
  */
-export default Bun.serve({
+const server = Bun.serve({
   routes: {
+    "/*": () => {
+      console.log("[BUNFLARE] HIT *");
+      return new Response("Not Found", { status: 404 });
+    },
+    // Root landing page (Fullstack mode)
+    "/": homepage,
     // API Status endpoint
     "/api/status": (req) => {
       let sqliteStatus = "Disabled";
@@ -23,10 +30,12 @@ export default Bun.serve({
       return Response.json({
         status: "Online 🚀",
         sqlite: sqliteStatus,
+        redis: "Active ✅",
         runtime: "Cloudflare Workers + Bunflare",
         timestamp: new Date().toISOString()
       });
     },
+
 
     // Echo endpoint with params
     "/api/echo/:message": (req) => {
@@ -68,7 +77,11 @@ export default Bun.serve({
         return new Response("No file uploaded", { status: 400 });
       }
 
-      const filename = file.name || "upload-" + Date.now();
+      // Sanitize the filename for SEO while preventing path traversal
+      const rawName = file.name || "upload";
+      const filename = `uploads/${rawName
+        .replace(/^.*[\\\/]/, '')   // Get only the basename
+        .replace(/[^\w\.-]/g, '_')}`; // Replace unsafe chars
 
       // Save to R2 using Bun.write()
       await Bun.write(filename, file);
@@ -89,24 +102,29 @@ export default Bun.serve({
 
     // Hybrid SQL test (D1 + Postgres)
     "/api/sql-test": async () => {
-      const results: any = { d1: {}, postgres: {} };
+      const results: { d1: Record<string, unknown>, postgres: Record<string, unknown> } = { d1: {}, postgres: {} };
 
       // 1. Test D1 (via bun:sqlite)
       try {
         const db = new Database("my-db");
-        await (db.run("CREATE TABLE IF NOT EXISTS d1_test (id INTEGER PRIMARY KEY, val TEXT)") as any);
-        await (db.run("INSERT INTO d1_test (val) VALUES (?)", [`D1 Test ${Date.now()}`]) as any);
+        const init = db.run("CREATE TABLE IF NOT EXISTS d1_test (id INTEGER PRIMARY KEY, val TEXT)");
+        if (init instanceof Promise) await init;
 
-        const d1Result = await (db.prepare("SELECT * FROM d1_test ORDER BY id DESC LIMIT 1").all() as any);
-        // The D1 returns an object { results: [...] } on all(), so we take the results property
-        results.d1 = { status: "Success ✅", data: d1Result.results };
-      } catch (e: any) {
-        results.d1 = { status: "Error ❌", error: e.message };
+        const insert = db.run("INSERT INTO d1_test (val) VALUES (?)", [`D1 Test ${Date.now()}`]);
+        if (insert instanceof Promise) await insert;
+
+        const stmt = db.prepare("SELECT * FROM d1_test ORDER BY id DESC LIMIT 1");
+        const d1Result = stmt.all();
+        const data = (d1Result instanceof Promise) ? await d1Result : d1Result;
+
+        // The D1 returns an object { results: [...] } on all()
+        results.d1 = { status: "Success ✅", data: (data as { results: unknown[] }).results };
+      } catch (e) {
+        results.d1 = { status: "Error ❌", error: e instanceof Error ? e.message : String(e) };
       }
 
       // 2. Test Postgres (via Bun.sql)
       try {
-        const { sql } = await import("bun");
         // We might need to ensure the table exists
         await sql`CREATE TABLE IF NOT EXISTS pg_test (id SERIAL PRIMARY KEY, val TEXT)`;
         await sql`INSERT INTO pg_test (val) VALUES (${`Postgres Test ${Date.now()}`})`;
@@ -121,16 +139,15 @@ export default Bun.serve({
 
     // Extensive Shims Test (KV, Crypto, etc)
     "/api/test": async () => {
-      const results: any = {};
+      const results: Record<string, string | undefined> = {};
 
-      // 1. Test bun:kv
+      // 1. Test Redis-over-KV Bridge
       try {
-        const kv = new KV();
-        await kv.set("test_key", "Bunflare is Awesome!");
-        const val = await kv.get("test_key");
-        results.kv = val === "Bunflare is Awesome!" ? "Working ✅" : "Value mismatch ❌";
+        await redis.set("test_key", "Bunflare is Awesome!");
+        const val = await redis.get("test_key");
+        results.redis = val === "Bunflare is Awesome!" ? "Working ✅" : "Value mismatch ❌";
       } catch (e) {
-        results.kv = `Error: ${e instanceof Error ? e.message : String(e)}`;
+        results.redis = `Error: ${e instanceof Error ? e.message : String(e)}`;
       }
 
       // 2. Test Bun.password
@@ -146,7 +163,8 @@ export default Bun.serve({
       try {
         const db = new Database();
         // Simple query test
-        await (db.run("CREATE TABLE IF NOT EXISTS tests (id INTEGER PRIMARY KEY, val TEXT)") as any);
+        const init = db.run("CREATE TABLE IF NOT EXISTS tests (id INTEGER PRIMARY KEY, val TEXT)");
+        if (init instanceof Promise) await init;
         results.sqlite = "Working ✅";
       } catch (e) {
         results.sqlite = `Error: ${e instanceof Error ? e.message : String(e)}`;
@@ -159,20 +177,20 @@ export default Bun.serve({
     "/api/sql": async () => {
       try {
         // Initialize table for Postgres (using SERIAL for auto-increment)
-        await Bun.sql`DROP TABLE IF EXISTS users`;
-        await Bun.sql`CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT)`;
+        await sql`DROP TABLE IF EXISTS users`;
+        await sql`CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT)`;
 
         // Insert some data (using array expansion)
         const names = ["Alice", "Bob", "Charlie"];
         for (const name of names) {
-          await Bun.sql`INSERT INTO users (name) VALUES (${name})`;
+          await sql`INSERT INTO users (name) VALUES (${name})`;
         }
 
         // Query using tagged template
-        const users = await Bun.sql`SELECT * FROM users LIMIT 10`;
+        const users = await sql`SELECT * FROM users LIMIT 10`;
 
         // Test .values()
-        const values = await Bun.sql`SELECT name FROM users`.values();
+        const values = await sql`SELECT name FROM users`.values();
 
         return Response.json({
           success: true,
@@ -190,11 +208,12 @@ export default Bun.serve({
 
     // Exhaustive Redis Bridge Tests
     "/api/test/redis": async () => {
-      // @ts-ignore
-      const redis = Bun.redis();
-      const report: any = { timestamp: new Date().toISOString(), results: [] };
+      const report: { timestamp: string, results: { name: string, status: string, detail?: unknown, error?: string }[] } = {
+        timestamp: new Date().toISOString(),
+        results: []
+      };
 
-      const check = async (name: string, fn: () => Promise<any>) => {
+      const check = async (name: string, fn: () => Promise<unknown>) => {
         try {
           const res = await fn();
           report.results.push({ name, status: "PASS ✅", detail: res });
@@ -245,22 +264,22 @@ export default Bun.serve({
       return Response.json(report);
     },
 
-    // Counter test using Bun.redis() -> mapped to KV
+    // Counter test using import { redis } from "bun" -> mapped to KV
     "/api/counter": async (req) => {
-      // @ts-ignore - Bunflare will handle the transformation
-      const redis = Bun.redis();
       const key = "visitor_counter";
 
       if (req.method === "POST") {
         const next = await redis.incr(key);
         return Response.json({ count: next });
       }
-
       const count = await redis.get(key) || "0";
       return Response.json({ count: parseInt(count) });
     }
   },
 
   // Enable development mode (HMR, detailed errors)
-  development: true
+  development: true,
 });
+
+console.log(`\n🚀 Bunflare local server running at ${server.url}`);
+export default server;

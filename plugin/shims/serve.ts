@@ -10,6 +10,20 @@ import { setEnv } from "bun:env";
  * Cloudflare Worker Shim for Bun.serve
  */
 export function serve(options) {
+  // 3. Call the original Bun fetch handler (with routing support)
+  const { routes, fetch: fallbackFetch, development } = options;
+
+  // Pre-compile routes to avoid creating URLPattern on every request
+  const compiledRoutes = [];
+  if (routes) {
+    for (const pattern in routes) {
+      compiledRoutes.push({
+        pattern: new URLPattern({ pathname: pattern }),
+        handler: routes[pattern]
+      });
+    }
+  }
+
   // Return an object that Cloudflare Workers entrypoint expects
   return {
     async fetch(request, env, ctx) {
@@ -17,7 +31,7 @@ export function serve(options) {
       setEnv(env);
 
       const url = new URL(request.url);
-      console.log(\`[bunflare] 📥 \${request.method} \${url.pathname}\`);
+      // console.log(\`[bunflare] 📥 \${request.method} \${url.pathname}\`);
 
       // 2. Prepare a mock Bun 'Server' object
       const server = {
@@ -33,18 +47,11 @@ export function serve(options) {
         cloudflare: { env, ctx }
       };
 
-      // 3. Call the original Bun fetch handler (with routing support)
-      const { routes, fetch: fallbackFetch, development } = options;
-
       let response = null;
 
-      if (routes) {
-        for (const pattern in routes) {
-          const handler = routes[pattern];
-          
-          // Bun supports simple string patterns and URLPattern-like syntax
-          const urlPattern = new URLPattern({ pathname: pattern });
-          const match = urlPattern.exec(request.url);
+      if (compiledRoutes.length > 0) {
+        for (const { pattern, handler } of compiledRoutes) {
+          const match = pattern.exec(request.url);
           
           if (match) {
             // In Bun, params are attached to the request object

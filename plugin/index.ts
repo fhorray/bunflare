@@ -1,7 +1,7 @@
 import type { BunPlugin } from "bun";
 import { getD1DatabaseShim } from "./shims/d1/database.ts";
 import { getSqlTagShim } from "./shims/d1/sql.ts";
-import { getKvShim } from "./shims/kv/index.ts";
+import { getRedisShim } from "./shims/redis/index.ts";
 import { getCryptoShim } from "./shims/crypto.ts";
 import { getEnvShim } from "./shims/env.ts";
 import { getServeShim } from "./shims/serve.ts";
@@ -80,16 +80,13 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
     });
   }
 
-  // 2. KV (bun:kv) -> Cloudflare KV
-  if (options.kv || options.redis) {
-    const binding = options.kv?.binding || options.redis?.binding || "KV";
-    console.log(`  ${pc.gray("↳")} ${pc.green("kv")}     ${pc.gray("shim enabled -> binding:")} ${pc.white(binding)}`);
-    if (options.redis) {
-      console.log(`    ${pc.gray("⚡")} ${pc.yellow("redis bridge active")}`);
-    }
+  // 2. Redis Bridge -> Cloudflare KV
+  if (options.redis) {
+    const binding = options.redis.binding || "KV";
+    console.log(`  ${pc.gray("↳")} ${pc.yellow("redis")}   ${pc.gray("bridge enabled -> binding:")} ${pc.white(binding)}`);
     registry.modules.push({
-      path: "kv",
-      contents: getKvShim(binding),
+      path: "redis",
+      contents: getRedisShim(binding),
     });
   }
 
@@ -140,10 +137,10 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
   });
 
   // 7. Fallbacks for preamble if not explicitly enabled
-  if (!registry.modules.find(m => m.path === "kv")) {
+  if (!registry.modules.find(m => m.path === "redis")) {
     registry.modules.push({
-      path: "kv",
-      contents: "export const redis = {}; export class RedisClient {}; export class KV { constructor() { throw new Error('KV not configured in bunflare.config.ts'); } };",
+      path: "redis",
+      contents: "export const redis = {}; export class RedisClient {};",
     });
   }
   if (!registry.modules.find(m => m.path === "sql")) {
@@ -180,12 +177,13 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
       export const password = BunCrypto.password;
       export const hash = BunCrypto.hash;
       export { file, write } from "bunflare:r2";
+      export { redis, RedisClient } from "bunflare:redis";
     `
   });
 
   // 9. Global Bun Object Shim Preamble
   registry.preamble = `
-    import { redis as _redis, RedisClient as _RedisClient } from "bunflare:kv";
+    import { redis as _redis, RedisClient as _RedisClient } from "bunflare:redis";
     import { serve as _serve } from "bunflare:serve";
     import { file as _file, write as _write } from "bunflare:r2";
     import { BunCrypto as _crypto } from "bunflare:crypto";
@@ -193,9 +191,7 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
     import { sql as _sql, SQL as _SQL } from "bunflare:sql";
 
     if (typeof globalThis.Bun === "undefined") {
-      (globalThis as any).Bun = {
-        redis: _redis,
-        RedisClient: _RedisClient,
+      (globalThis as unknown as { Bun: unknown }).Bun = {
         serve: _serve,
         file: _file,
         write: _write,
@@ -243,6 +239,11 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
         return { path: args.path, namespace: "bunflare" };
       });
 
+      // Resolve HTML imports (Frontend assets)
+      build.onResolve({ filter: /\.html$/ }, (args) => {
+        return { path: args.path, namespace: "bunflare-asset" };
+      });
+
       // 2. Load virtual module contents
       build.onLoad({ filter: /.*/, namespace: "bunflare" }, (args) => {
         // For 'bun' entrypoint, we use the special 'bun' shim
@@ -253,6 +254,24 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
           return { contents: shim.contents, loader: "ts" };
         }
         return undefined;
+      });
+
+      // 3. Load HTML asset shims
+      build.onLoad({ filter: /.*/, namespace: "bunflare-asset" }, (args) => {
+        return {
+          contents: `
+            export default async (req, server) => {
+              const assets = server?.cloudflare?.env?.ASSETS;
+              if (assets && typeof assets.fetch === "function") {
+                // If it's the root import, we might want to fetch index.html
+                // but usually the requester already has the right URL.
+                return await assets.fetch(req);
+              }
+              return new Response("Cloudflare ASSETS binding not found. Ensure 'assets = { directory: \\"./public\\" }' is in your wrangler.jsonc", { status: 500 });
+            };
+          `,
+          loader: "ts"
+        };
       });
 
       // Apply global replacements and preambles to all source files

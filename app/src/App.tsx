@@ -122,7 +122,7 @@ export function App() {
                 <StatusRow label="API Status" value={status.status} />
                 <StatusRow label="Runtime" value={status.runtime} />
                 <StatusRow label="SQLite (D1)" value={tests?.sqlite} />
-                <StatusRow label="KV (Storage)" value={tests?.kv} />
+                <StatusRow label="Redis (Bridge)" value={tests?.redis} />
                 <StatusRow label="Crypto (Hash)" value={tests?.crypto} />
               </div>
 

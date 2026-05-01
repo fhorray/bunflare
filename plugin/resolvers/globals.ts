@@ -20,6 +20,20 @@ export function registerGlobalResolver(
 ): void {
   if (registry.globals.length === 0) return;
 
+  // Pre-compile patterns to avoid re-compiling in every onLoad call
+  const compiledShims = registry.globals.map((shim) => {
+    const source = shim.pattern.source;
+    const flags = shim.pattern.flags;
+    
+    return {
+      ...shim,
+      // For testing, we use a non-global version to avoid lastIndex state issues
+      testPattern: new RegExp(source, flags.replace("g", "")),
+      // Fast search string for includes() check (works for simple patterns like Bun.env)
+      searchStr: source.replace(/\\/g, ""),
+    };
+  });
+
   build.onLoad({ filter: /\.(js|ts|jsx|tsx)$/, namespace: "file" }, async (args) => {
     // Read the file content
     // Note: We use Bun.file(args.path).text() for performance in Bun
@@ -29,19 +43,22 @@ export function registerGlobalResolver(
     let hasChanges = false;
     const preambles = new Set<string>();
 
-    for (const globalShim of registry.globals) {
-      // Use a fresh RegExp to avoid lastIndex state issues if the pattern has /g
-      const pattern = new RegExp(globalShim.pattern.source, globalShim.pattern.flags);
-      
-      if (pattern.test(modifiedContents)) {
-        modifiedContents = modifiedContents.replace(
-          new RegExp(globalShim.pattern.source, globalShim.pattern.flags),
-          globalShim.replacement
-        );
-        if (globalShim.preamble) {
-          preambles.add(globalShim.preamble);
+    for (const shim of compiledShims) {
+      // 1. Fast path: check if the literal string exists
+      if (modifiedContents.includes(shim.searchStr)) {
+        // 2. Accurate path: verify with regex (using pre-compiled non-global pattern)
+        if (shim.testPattern.test(modifiedContents)) {
+          // 3. Apply replacement (using pre-compiled global pattern)
+          modifiedContents = modifiedContents.replace(
+            shim.pattern,
+            shim.replacement
+          );
+          
+          if (shim.preamble) {
+            preambles.add(shim.preamble);
+          }
+          hasChanges = true;
         }
-        hasChanges = true;
       }
     }
 

@@ -9,3 +9,9 @@ services:
       POSTGRES_DB: bunflare
     ports:
       - "5433:5432"
+  
+  redis:
+    image: redis:latest
+    container_name: bunflare_redis
+    ports:
+      - "6379:6379"

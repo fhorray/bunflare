@@ -52,8 +52,9 @@ plugin/
 │
 ├── shims/
 │   ├── sqlite.ts         # bun:sqlite → Cloudflare D1 shim
-│   ├── redis.ts          # bun:redis / ioredis → KV or Upstash shim
-│   ├── kv.ts             # bun:kv → KVNamespace shim
+│   ├── redis/            # Upstash Redis HTTP client shim
+│   │   ├── index.ts      # Shim generator logic
+│   │   └── logic.ts      # Redis client wrapper implementation
 │   ├── env.ts            # Bun.env / process.env → Workers env binding shim
 │   └── crypto.ts         # bun:crypto → Web Crypto API shim
 │
@@ -112,7 +113,7 @@ await Bun.build({
     bunflare({
       sqlite: { binding: "DB" },           // maps to env.DB (D1Database)
       redis: { provider: "upstash" },       // uses Upstash HTTP client
-      kv: { binding: "MY_KV" },            // maps to env.MY_KV (KVNamespace)
+      redis: { binding: "MY_KV" },         // maps to env.MY_KV (Redis-over-KV)
     }),
   ],
 });
@@ -130,7 +131,6 @@ await Bun.build({
 ### Phase 2 — First Shims
 - [ ] `plugin/shims/sqlite.ts` — D1 adapter (same query interface as `bun:sqlite`)
 - [ ] `plugin/shims/env.ts` — `Bun.env` → Workers `env` passthrough
-- [ ] `plugin/shims/kv.ts` — KVNamespace wrapper
 
 ### Phase 3 — Extended Shims
 - [ ] `plugin/shims/redis.ts` — Upstash Redis via HTTP

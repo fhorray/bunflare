@@ -13,8 +13,7 @@ The foundation of bunflare is complete and working. The following features have 
 |---|---|---|---|
 | Environment Variables | `Bun.env` | `env` bindings via `withBunflare` | ✅ Done |
 | SQLite Database | `bun:sqlite` / `new Database()` | Cloudflare D1 | ✅ Done |
-| Key-Value Store | `bun:kv` / `new KV()` | Cloudflare KV Namespace | ✅ Done |
-| Redis Client | `Bun.redis` / `Bun.RedisClient` | Upstash Redis HTTP API | ✅ Done |
+| Redis Client | `import { redis } from "bun"` | Cloudflare KV (Redis-over-KV bridge) | ✅ Done |
 | Password Hashing | `Bun.password.hash/verify` | Web Crypto API (PBKDF2) | ✅ Done |
 | Generic Hashing | `Bun.hash()` | Web Crypto API (SHA-256) | ✅ Done |
 
@@ -162,10 +161,10 @@ const users = await Bun.sql`SELECT * FROM users WHERE id = ${id}`;
 ```
 
 **Implementation Plan:**
-- [ ] Create `plugin/shims/sql.ts`: Generate shim using Hyperdrive's PostgreSQL-compatible driver
-- [ ] Add `sql` option to `BunflareOptions` in `plugin/types.ts`
-- [ ] Register global replacement pattern for `Bun.sql` tagged template literal
-- [ ] Write integration test in `tests/integration.test.ts`
+- [x] Create `plugin/shims/hyperdrive/sql.ts`: Generate shim using Hyperdrive's PostgreSQL-compatible driver
+- [x] Add `sql` option to `BunflareOptions` in `plugin/types.ts`
+- [x] Register global replacement pattern for `Bun.sql` tagged template literal
+- [x] Write integration test in `tests/integration.test.ts`
 
 **Config API:**
 ```ts
@@ -179,7 +178,7 @@ bunflare({
 
 ---
 
-### 1.3 — `Bun.CryptoHasher` ↔ Web Crypto API
+### 1.4 — `Bun.CryptoHasher` ↔ Web Crypto API
 
 **Why it matters**: `Bun.CryptoHasher` provides a streaming interface for hashing (SHA-256, MD5, SHA-512, etc.). The Web Crypto API available in Workers can do the same.
 
@@ -202,7 +201,7 @@ const digest = hasher.digest("hex");
 
 ---
 
-### 1.4 — `Bun.randomUUIDv7()` ↔ Web Crypto `crypto.randomUUID()`
+### 1.5 — `Bun.randomUUIDv7()` ↔ Web Crypto `crypto.randomUUID()`
 
 **Why it matters**: Bun offers `Bun.randomUUIDv7()` for time-sorted UUIDs (UUIDv7). Workers support `crypto.randomUUID()` (v4) natively, but v7 can be polyfilled in pure JS.
 
@@ -220,12 +219,12 @@ The goal of this phase is to go from "the build works" to "the Worker output is 
 
 Complete the unit test suite in `tests/plugin.test.ts` and `tests/integration.test.ts`:
 
-- [ ] Test `Bun.file()` → R2 shim code generation
-- [ ] Test `Bun.sql` → Hyperdrive shim code generation
+- [x] Test `Bun.file()` → R2 shim code generation
+- [x] Test `Bun.sql` → Hyperdrive shim code generation
 - [ ] Test `Bun.CryptoHasher` → Web Crypto transformation
 - [ ] Test `Bun.randomUUIDv7()` → polyfill injection
-- [ ] Test that `withBunflare` is correctly tree-shaken when not used
-- [ ] Test that empty binding names throw at build time (not at runtime)
+- [x] Test that `withBunflare` is correctly tree-shaken when not used
+- [x] Test that empty binding names throw at build time (not at runtime)
 
 ### 2.2 — Miniflare Runtime Tests
 
@@ -267,13 +266,8 @@ Currently, a missing or misconfigured binding fails silently at runtime. We shou
 
 ### 3.3 — Improved Error Messages
 
-- [ ] When `Bun.sql` or `Bun.file` is used without configuring the respective binding in the plugin options, throw an error like:
+- [x] When `Bun.sql` or `Bun.file` is used without configuring the respective binding in the plugin options, throw an error like:
   > `[bunflare] You used Bun.file() but did not configure the 'r2' option. Add r2: { binding: "MY_BUCKET" } to your bunflare() config.`
-
-### 3.4 — VS Code Extension (Stretch Goal)
-
-- [ ] Create a VS Code extension that shows inline hints when a Bun API will be shimmed, e.g.:
-  > `💡 Bun.file() will be shimmed to R2 binding "MY_BUCKET"`
 
 ---
 

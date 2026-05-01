@@ -11,6 +11,7 @@ mock.module("postgres", () => {
     client.unsafe = (str: string) => {
       return { text: str, params: [], unsafe: true, mocked: "postgres.js" };
     };
+    client.end = async () => {};
     return client;
   };
   
@@ -29,6 +30,7 @@ mock.module("pg", () => {
         rows: [{ text, values, mocked: "pg" }]
       };
     }
+    async end() {}
   }
   return { Client };
 });

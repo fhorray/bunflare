@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach } from "bun:test";
-import { RedisClient } from "../plugin/shims/kv/logic";
+import { RedisClient } from "../plugin/shims/redis/logic";
 
 // Mocking the Cloudflare Workers environment
 const mockKV = {

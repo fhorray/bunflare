@@ -2,10 +2,10 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 /**
- * Generates the Cloudflare Workers shim for bun:kv and Bun.redis().
+ * Generates the Cloudflare Workers shim for Bun.redis().
  * It reads the actual implementation from logic.ts and injects the binding name.
  */
-export function getKvShim(bindingName: string): string {
+export function getRedisShim(bindingName: string): string {
   // Logic is now in the same folder as logic.ts
   const logicPath = join(import.meta.dir, "logic.ts");
   

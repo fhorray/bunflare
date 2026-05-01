@@ -1,7 +1,8 @@
 import { expect, test, describe, spyOn } from "bun:test";
-import { getKvShim } from "../plugin/shims/kv/index.ts";
+import { getRedisShim } from "../plugin/shims/redis/index.ts";
 import { getR2Shim } from "../plugin/shims/r2.ts";
 import { getCryptoShim } from "../plugin/shims/crypto.ts";
+import { getD1DatabaseShim } from "../plugin/shims/d1/database.ts";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
@@ -15,46 +16,47 @@ function evalShim(shimCode: string, globalMock: any) {
     const exports = {};
     ${transpiled}
     // Collect all exported functions/classes into exports object
-    if (typeof KV !== 'undefined') exports.KV = KV;
+    if (typeof redis !== 'undefined') exports.redis = redis;
+    if (typeof RedisClient !== 'undefined') exports.RedisClient = RedisClient;
     if (typeof file !== 'undefined') exports.file = file;
     if (typeof write !== 'undefined') exports.write = write;
     if (typeof password !== 'undefined') exports.password = password;
     if (typeof CryptoHasher !== 'undefined') exports.CryptoHasher = CryptoHasher;
+    if (typeof Database !== 'undefined') exports.Database = Database;
     return exports;
   `)(globalMock);
 }
 
 describe("Shim Logic Tests", () => {
   
-  describe("KV Shim", () => {
-    test("should interact with mocked KV binding", async () => {
-      const mockKV = {
-        get: async (key: string) => key === "foo" ? "bar" : null,
-        put: async (key: string, val: string) => {},
-        delete: async (key: string) => {},
+  describe("D1 Database Shim", () => {
+    test("should map Database calls to D1 binding", async () => {
+      const mockD1 = {
+        prepare: (sql: string) => ({
+          bind: (...params: any[]) => ({
+            all: async () => ({ results: [{ id: 1, val: "test" }], success: true }),
+            run: async () => ({ success: true })
+          })
+        })
       };
-      const getSpy = spyOn(mockKV, "get");
-      const putSpy = spyOn(mockKV, "put");
 
-      const globalMock = { env: { "MY_KV": mockKV } };
-      const KVModule = evalShim(getKvShim("MY_KV"), globalMock);
+      const globalMock = { 
+        Bun: { env: { "MY_DB": mockD1 } }
+      };
 
-      const kv = new KVModule.KV();
-      
-      expect(await kv.get("foo")).toBe("bar");
-      expect(getSpy).toHaveBeenCalledWith("foo");
+      const D1Module = evalShim(getD1DatabaseShim("MY_DB"), globalMock);
+      const db = new D1Module.Database();
 
-      await kv.set("hello", "world");
-      expect(putSpy).toHaveBeenCalledWith("hello", "world");
-    });
+      const results = await db.query("SELECT * FROM tests").all();
+      expect(results).toEqual({
+        results: [{ id: 1, val: "test" }],
+        success: true
+      });
 
-    test("should throw if binding is missing", () => {
-      const globalMock = { env: {} };
-      const KVModule = evalShim(getKvShim("MISSING_KV"), globalMock);
-
-      expect(() => new KVModule.KV()).toThrow(/not found/);
+      await db.run("INSERT INTO tests (val) VALUES (?)", "hello");
     });
   });
+
 
   describe("R2 Shim", () => {
     test("Bun.file() shim logic", async () => {

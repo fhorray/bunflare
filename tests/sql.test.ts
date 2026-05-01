@@ -1,5 +1,13 @@
 import { expect, test, describe } from "bun:test";
-import { createSQL } from "../plugin/shims/d1/logic.ts";
+import { createSQL, SQLFragment } from "../plugin/shims/d1/logic.ts";
+
+describe("SQLFragment", () => {
+  test("should hold text and params", () => {
+    const fragment = new SQLFragment("id, name", [1, 2]);
+    expect(fragment.text).toBe("id, name");
+    expect(fragment.params).toEqual([1, 2]);
+  });
+});
 
 // Mock implementation for the test environment
 const createMockDB = () => ({
