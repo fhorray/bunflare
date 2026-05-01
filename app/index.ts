@@ -11,10 +11,6 @@ import homepage from "./public/index.html";
  */
 const server = Bun.serve({
   routes: {
-    "/*": () => {
-      console.log("[BUNFLARE] HIT *");
-      return new Response("Not Found", { status: 404 });
-    },
     // Root landing page (Fullstack mode)
     "/": homepage,
     // API Status endpoint
