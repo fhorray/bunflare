@@ -185,13 +185,9 @@ export async function init() {
 
   if (template === "hono") {
     entryContent = `import { Hono } from "hono";
-import { serveStatic } from "hono/bun";
 import indexHtml from "../public/index.html";
 
 const app = new Hono();
-
-// Serve static files from the public directory
-app.use("*", serveStatic({ root: "./public" }));
 
 app.get("/", (c) => c.html(indexHtml));
 
