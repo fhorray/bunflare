@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { join } from "path";
-import { existsSync, rmSync, readFileSync } from "fs";
+import { existsSync, rmSync, readFileSync, mkdirSync } from "fs";
 import { spawn } from "child_process";
 import { watch } from "fs";
 import { bunflare } from "../index.ts";
@@ -56,7 +56,7 @@ function discoverBindings(): Partial<BunflareOptions> {
 async function runBuild(isDev = false, isRebuild = false) {
   const userConfig = await loadConfig() || {};
   const discovered = discoverBindings();
-  
+
   // Auto-discover entrypoint if not provided
   let entrypoint = userConfig.entrypoint;
   if (!entrypoint) {
@@ -139,6 +139,12 @@ async function runBuild(isDev = false, isRebuild = false) {
     }
 
     if (workerResult.success && frontendSuccess) {
+      // Ensure dist/public exists to avoid Wrangler errors even if no frontend is built
+      const publicDir = join(process.cwd(), "dist", "public");
+      if (!existsSync(publicDir)) {
+        mkdirSync(publicDir, { recursive: true });
+      }
+
       const time = new Date().toLocaleTimeString();
       if (isRebuild) {
         process.stdout.write(`${pc.green("✓")} ${pc.gray(`rebuild successful at ${time}`)}\n`);
@@ -160,7 +166,7 @@ async function runBuild(isDev = false, isRebuild = false) {
  */
 function runWrangler(wranglerArgs: string[]) {
   const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
-  
+
   const child = spawn(command, wranglerArgs, {
     stdio: "inherit",
   });
@@ -186,7 +192,16 @@ const command = args[0];
 
 if (command === "init") {
   await init();
-} else if (command === "dev") {
+} else if (args.includes("dev")) {
+  const isLocal = args.includes("--local");
+  if (isLocal) {
+    console.log(`${pc.cyan("🚀 starting bunflare in local-only mode...")}`);
+    const config = await loadConfig();
+    const entrypoint = config?.entrypoint || "./index.ts";
+    spawn("bun", ["--hot", entrypoint], { stdio: "inherit" });
+    process.exit(0);
+  }
+
   console.log(`${pc.yellow("🚀 starting bunflare dev mode...")}`);
 
   // 1. Initial Build
