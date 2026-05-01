@@ -1,9 +1,10 @@
+#!/usr/bin/env bun
 import { join } from "path";
 import { existsSync, rmSync, readFileSync } from "fs";
 import { spawn } from "child_process";
 import { watch } from "fs";
-import { bunflare } from "./index.ts";
-import type { BunflareConfig, BunflareOptions } from "./types.ts";
+import { bunflare } from "../index.ts";
+import type { BunflareConfig, BunflareOptions } from "../types.ts";
 import pc from "picocolors";
 
 /**
@@ -53,21 +54,45 @@ function discoverBindings(): Partial<BunflareOptions> {
  * Orchestrates the build process for both Worker and Frontend.
  */
 async function runBuild(isDev = false, isRebuild = false) {
-  const userConfig = await loadConfig();
-  if (!userConfig) {
-    process.stderr.write(`${pc.red("Error:")} bunflare.config.ts not found!\n`);
-    if (!isDev) process.exit(1);
-    return false;
+  const userConfig = await loadConfig() || {};
+  const discovered = discoverBindings();
+  
+  // Auto-discover entrypoint if not provided
+  let entrypoint = userConfig.entrypoint;
+  if (!entrypoint) {
+    if (existsSync(join(process.cwd(), "index.ts"))) entrypoint = "./index.ts";
+    else if (existsSync(join(process.cwd(), "src", "index.ts"))) entrypoint = "./src/index.ts";
+    else if (existsSync(join(process.cwd(), "index.js"))) entrypoint = "./index.js";
   }
 
-  const discovered = discoverBindings();
   const config: BunflareConfig = {
     ...discovered,
     ...userConfig,
+    entrypoint,
     sqlite: userConfig.sqlite || discovered.sqlite,
     r2: userConfig.r2 || discovered.r2,
     redis: userConfig.redis || discovered.redis,
   };
+
+  if (!entrypoint) {
+    process.stderr.write(`${pc.red("Error:")} Entry point not found! Create index.ts or src/index.ts\n`);
+    if (!isDev) process.exit(1);
+    return false;
+  }
+
+  // Check for export default
+  try {
+    const entryContent = readFileSync(join(process.cwd(), entrypoint), "utf-8");
+    if (!entryContent.includes("export default")) {
+      console.error(`\n${pc.red("✖ Fatal Error:")} Your entry point (${pc.cyan(entrypoint)}) is missing an ${pc.bold("export default")} statement.`);
+      console.error(`${pc.gray("  Cloudflare Workers requires the server to be exported as the default export.")}`);
+      console.error(`${pc.gray("  Example: ")}${pc.green("export default server;")}\n`);
+      if (!isDev) process.exit(1);
+      return false; // Abort build
+    }
+  } catch (e) {
+    // Ignore read errors here, Bun.build will catch them later
+  }
 
   if (!isRebuild) {
     const distDir = join(process.cwd(), "dist");
@@ -87,7 +112,7 @@ async function runBuild(isDev = false, isRebuild = false) {
       target: "browser",
       format: "esm",
       minify: !isDev,
-      plugins: [bunflare(config)],
+      plugins: [bunflare(config), ...(config.plugins || [])],
     });
 
     if (!workerResult.success) {
@@ -103,6 +128,7 @@ async function runBuild(isDev = false, isRebuild = false) {
         outdir: config.frontend.outdir || "./dist/public",
         target: "browser",
         minify: !isDev,
+        plugins: config.frontend.plugins || config.plugins || [],
       });
 
       if (!frontendResult.success) {
@@ -152,15 +178,23 @@ function runWrangler(wranglerArgs: string[]) {
   });
 }
 
+import { init } from "./init.ts";
+
 // CLI Logic
 const args = process.argv.slice(2);
 const command = args[0];
 
-if (command === "dev") {
+if (command === "init") {
+  await init();
+} else if (command === "dev") {
   console.log(`${pc.yellow("🚀 starting bunflare dev mode...")}`);
 
   // 1. Initial Build
-  runBuild(true).then(() => {
+  runBuild(true).then((success) => {
+    if (!success) {
+      process.exit(1);
+    }
+
     // 2. Start Watcher
     let debounceTimer: NodeJS.Timeout;
     const watcher = watch(process.cwd(), { recursive: true }, (event, filename) => {
@@ -212,7 +246,29 @@ if (command === "dev") {
 } else if (command === "build") {
   const success = await runBuild(args.includes("--dev"));
   if (!success) process.exit(1);
+} else if (command === "--version" || command === "-v" || command === "version") {
+  const pkg = await import("../../package.json");
+  console.log(`${pc.cyan("bunflare")} version ${pc.bold(pkg.version || "1.0.0")}`);
 } else {
-  console.log(`${pc.bold("Bunflare CLI")}`);
-  console.log(`Usage: bunflare <dev|build|deploy>`);
+  console.log(`
+  ${pc.bold(pc.cyan("🔥 Bunflare CLI"))}
+  ${pc.gray("Write Bun. Deploy Cloudflare.")}
+
+  ${pc.bold("Usage:")}
+    ${pc.white("bunflare <command> [options]")}
+
+  ${pc.bold("Commands:")}
+    ${pc.cyan("init")}       🚀 Initialize a new project (config, types, bindings)
+    ${pc.cyan("dev")}        👨‍💻 Start development server with HMR and logging
+    ${pc.cyan("build")}      📦 Build for production (optimized ESM bundle)
+    ${pc.cyan("deploy")}     ☁️  Build and deploy to Cloudflare Workers
+
+  ${pc.bold("Options:")}
+    ${pc.gray("-v, --version")}  Show version number
+    ${pc.gray("-h, --help")}     Show this help menu
+
+  ${pc.bold("Examples:")}
+    ${pc.gray("$ bunflare init")}
+    ${pc.gray("$ bunflare dev")}
+  `);
 }

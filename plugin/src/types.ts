@@ -96,7 +96,14 @@ export interface BunflareOptions {
     entrypoint: string;
     /** The directory where bundled assets will be saved, e.g. "./dist/public" */
     outdir: string;
+    /** Additional Bun plugins for the frontend build (e.g. Tailwind) */
+    plugins?: any[];
   };
+
+  /**
+   * Additional Bun plugins for the backend build.
+   */
+  plugins?: any[];
 }
 
 // ---------------------------------------------------------------------------

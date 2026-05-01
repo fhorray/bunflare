@@ -12,7 +12,7 @@ import type { BunflareConfig, BunflareOptions } from "./types.ts";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-export type { BunflareConfig, BunflareOptions };
+export * from "./types.ts";
 
 interface ShimModule {
   path: string;
@@ -173,6 +173,7 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
     path: "bun",
     contents: `
       export { sql, SQL } from "bunflare:sql";
+      export { serve } from "bunflare:serve";
       import { BunCrypto } from "bunflare:crypto";
       export const password = BunCrypto.password;
       export const hash = BunCrypto.hash;
@@ -227,9 +228,9 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
     setup(build) {
       // 1. Resolve virtual modules and mark drivers as external
       build.onResolve({ filter: /^(bun|bun:.*|bunflare:.*|postgres|pg|mysql2)$/ }, (args) => {
-        // Handle database drivers (external)
+        // Handle database drivers (bundle them)
         if (/^(postgres|pg|mysql2)$/.test(args.path)) {
-          return { path: args.path, external: true };
+          return undefined; // Let Bun resolve and bundle them
         }
 
         // Avoid infinite recursion

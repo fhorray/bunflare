@@ -167,10 +167,13 @@ bun run cf-typegen  # bunx wrangler types --env-interface CloudflareBindings
 }
 ```
 
-### 5. Write your Worker like you're writing Bun
+### 6. Write your Worker like you're writing Bun
+
+> [!IMPORTANT]
+> **Export Default Requirement:** Cloudflare Workers require your application to be exported as an ES module default export. Whether you use `export default Bun.serve(...)` directly or assign it to a variable (`const server = ...; export default server;`), this export is strictly required.
 
 ```ts
-// index.ts
+// src/index.ts
 import { Database } from "bun:sqlite";
 import { redis } from "bun";
 

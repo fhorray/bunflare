@@ -1,4 +1,4 @@
-import type { BunflareConfig } from "bunflare/types";
+import type { BunflareConfig } from "bunflare";
 
 export default {
   sqlite: { binding: "DB_SECONDARY" },

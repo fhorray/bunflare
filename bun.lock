@@ -34,12 +34,13 @@
     },
     "plugin": {
       "name": "bunflare",
-      "version": "1.0.0",
+      "version": "0.1.12",
       "bin": {
-        "bunflare": "./bin.ts",
+        "bunflare": "./src/cli/index.ts",
       },
       "dependencies": {
         "livereload": "^0.10.3",
+        "picocolors": "^1.1.1",
       },
       "devDependencies": {
         "@types/livereload": "^0.9.5",

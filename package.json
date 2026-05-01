@@ -1,15 +1,10 @@
 {
-  "name": "bunflare",
-  "module": "index.ts",
-  "type": "module",
+  "name": "bunflare-monorepo",
   "private": true,
   "workspaces": [
     "plugin",
     "app"
   ],
-  "exports": {
-    "./*": "./plugin/src/*.ts"
-  },
   "devDependencies": {
     "@types/bun": "latest"
   },

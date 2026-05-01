@@ -1,16 +1,21 @@
 {
   "name": "bunflare",
-  "version": "1.0.0",
+  "version": "0.1.12",
   "description": "Bunflare plugin for full-stack Cloudflare Workers applications",
-  "main": "index.ts",
+  "main": "src/index.ts",
   "bin": {
-    "bunflare": "./bin.ts"
+    "bunflare": "./src/cli/index.ts"
   },
   "scripts": {
-    "build": "bun build index.ts"
+    "build": "bun build src/index.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
   },
   "dependencies": {
-    "livereload": "^0.10.3"
+    "livereload": "^0.10.3",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/livereload": "^0.9.5"
