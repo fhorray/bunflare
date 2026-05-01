@@ -1,6 +1,6 @@
 {
   "name": "bunflare",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Bunflare plugin for full-stack Cloudflare Workers applications",
   "main": "src/index.ts",
   "bin": {
@@ -11,6 +11,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./hono": "./src/hono.ts",
     "./*": "./src/*.ts"
   },
   "dependencies": {

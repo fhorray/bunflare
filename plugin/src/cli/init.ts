@@ -185,9 +185,15 @@ export async function init() {
 
   if (template === "hono") {
     entryContent = `import { Hono } from "hono";
+import { serveStatic } from "bunflare/hono";
 import indexHtml from "../public/index.html";
 
 const app = new Hono();
+
+// Works in both environments:
+// - bun dev:local  → serves from ./public via hono/bun
+// - bun dev        → passes through, Cloudflare ASSETS handles static files
+app.use("*", serveStatic({ root: "./public" }));
 
 app.get("/", (c) => c.html(indexHtml));
 
