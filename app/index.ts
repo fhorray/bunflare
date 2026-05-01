@@ -87,6 +87,38 @@ export default Bun.serve({
       });
     },
 
+    // Hybrid SQL test (D1 + Postgres)
+    "/api/sql-test": async () => {
+      const results: any = { d1: {}, postgres: {} };
+
+      // 1. Test D1 (via bun:sqlite)
+      try {
+        const db = new Database("my-db");
+        await (db.run("CREATE TABLE IF NOT EXISTS d1_test (id INTEGER PRIMARY KEY, val TEXT)") as any);
+        await (db.run("INSERT INTO d1_test (val) VALUES (?)", [`D1 Test ${Date.now()}`]) as any);
+
+        const d1Result = await (db.prepare("SELECT * FROM d1_test ORDER BY id DESC LIMIT 1").all() as any);
+        // The D1 returns an object { results: [...] } on all(), so we take the results property
+        results.d1 = { status: "Success ✅", data: d1Result.results };
+      } catch (e: any) {
+        results.d1 = { status: "Error ❌", error: e.message };
+      }
+
+      // 2. Test Postgres (via Bun.sql)
+      try {
+        const { sql } = await import("bun");
+        // We might need to ensure the table exists
+        await sql`CREATE TABLE IF NOT EXISTS pg_test (id SERIAL PRIMARY KEY, val TEXT)`;
+        await sql`INSERT INTO pg_test (val) VALUES (${`Postgres Test ${Date.now()}`})`;
+        const pgRows = await sql`SELECT * FROM pg_test ORDER BY id DESC LIMIT 1`;
+        results.postgres = { status: "Success ✅", data: pgRows };
+      } catch (e: any) {
+        results.postgres = { status: "Error ❌", error: e.message };
+      }
+
+      return Response.json(results);
+    },
+
     // Extensive Shims Test (KV, Crypto, etc)
     "/api/test": async () => {
       const results: any = {};
@@ -114,13 +146,46 @@ export default Bun.serve({
       try {
         const db = new Database();
         // Simple query test
-        db.run("CREATE TABLE IF NOT EXISTS tests (id INTEGER PRIMARY KEY, val TEXT)");
+        await (db.run("CREATE TABLE IF NOT EXISTS tests (id INTEGER PRIMARY KEY, val TEXT)") as any);
         results.sqlite = "Working ✅";
       } catch (e) {
         results.sqlite = `Error: ${e instanceof Error ? e.message : String(e)}`;
       }
 
       return Response.json(results);
+    },
+
+    // New: Test Bun.sql (Tagged Template API)
+    "/api/sql": async () => {
+      try {
+        // Initialize table for Postgres (using SERIAL for auto-increment)
+        await Bun.sql`DROP TABLE IF EXISTS users`;
+        await Bun.sql`CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT)`;
+
+        // Insert some data (using array expansion)
+        const names = ["Alice", "Bob", "Charlie"];
+        for (const name of names) {
+          await Bun.sql`INSERT INTO users (name) VALUES (${name})`;
+        }
+
+        // Query using tagged template
+        const users = await Bun.sql`SELECT * FROM users LIMIT 10`;
+
+        // Test .values()
+        const values = await Bun.sql`SELECT name FROM users`.values();
+
+        return Response.json({
+          success: true,
+          users,
+          values,
+          message: "Bun.sql (Tagged Template) Working ✅"
+        });
+      } catch (e) {
+        return Response.json({
+          success: false,
+          error: e instanceof Error ? e.message : String(e)
+        }, { status: 500 });
+      }
     },
 
     // Exhaustive Redis Bridge Tests

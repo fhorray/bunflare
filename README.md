@@ -42,6 +42,7 @@ No runtime overhead. No vendor lock-in. Just write Bun, deploy Cloudflare.
 |---|---|---|
 | `Bun.env` | Worker `env` bindings | ✅ Done |
 | `bun:sqlite` / `new Database()` | Cloudflare **D1** | ✅ Done |
+| `Bun.sql` (tagged template) | Cloudflare **Hyperdrive** + any Postgres driver | ✅ Done |
 | `bun:kv` / `new KV()` | Cloudflare **KV Namespace** | ✅ Done |
 | `Bun.redis()` / `Bun.RedisClient` | Cloudflare **KV** (Redis-over-KV bridge) | ✅ Done |
 | `Bun.password.hash/verify` | **WebCrypto** (PBKDF2) | ✅ Done |
@@ -290,7 +291,19 @@ const users = stmt.all(1); // ⚠️ See note below
 db.run("INSERT INTO users (name, email) VALUES (?, ?)", "Alice", "alice@example.com");
 ```
 
-> **⚠️ Important:** D1 is async by nature, while `bun:sqlite` is synchronous. Bunflare handles this transparently for `db.run()`, but `stmt.all()` will throw an error in the Cloudflare environment — you'll need to refactor those calls to use `db.query(...).all(...)` with async/await via the D1 client directly. This is a known limitation we're working on in the roadmap.
+> **⚠️ Important — Async/Await is Required:** D1 is async by nature, while the native `bun:sqlite` API is synchronous. Bunflare's shim returns Promises from all query methods (`.run()`, `.all()`), so you **must** `await` them. Use `as any` to satisfy TypeScript when calling `.all()`, since the declared return type is `unknown[]` but the actual value is a `Promise`.
+>
+> ```ts
+> const db = new Database("DB");
+>
+> // Always await your queries on Cloudflare:
+> await (db.run("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)") as any);
+> await (db.run("INSERT INTO users (name) VALUES (?)", ["Alice"]) as any);
+>
+> // .all() returns a D1Result object, rows are under .results
+> const d1Result = await (db.prepare("SELECT * FROM users LIMIT 10").all() as any);
+> const rows = d1Result.results; // { id: 1, name: "Alice" }[]
+> ```
 
 **Config:**
 ```ts
@@ -298,6 +311,167 @@ bunflare({ sqlite: { binding: "DB" } })
 ```
 
 ---
+
+### `Bun.sql` → Cloudflare Hyperdrive + PostgreSQL 🐘
+
+This is one of Bunflare's most powerful new features. Write standard **`Bun.sql`** tagged-template queries and deploy them to Cloudflare Workers backed by a full PostgreSQL database via **Cloudflare Hyperdrive**.
+
+Hyperdrive is Cloudflare's connection pooling and caching proxy for external databases. It keeps persistent warm connections at the edge, so connecting to PostgreSQL from a Worker is fast and cheap.
+
+```ts
+// index.ts — same Bun.sql tagged template syntax you already know
+export default Bun.serve({
+  routes: {
+    "/api/users": async () => {
+      // Bun.sql tagged template → Hyperdrive → PostgreSQL
+      await Bun.sql`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, name TEXT)`;
+
+      await Bun.sql`INSERT INTO users (name) VALUES (${"Alice"})`;
+
+      const users = await Bun.sql`SELECT * FROM users LIMIT 10`;
+
+      // .values() returns rows as arrays instead of objects
+      const nameList = await Bun.sql`SELECT name FROM users`.values();
+
+      return Response.json({ users, nameList });
+    }
+  }
+});
+```
+
+#### Step-by-Step Setup
+
+**1. Create a Hyperdrive instance on Cloudflare:**
+
+```bash
+bunx wrangler hyperdrive create my-hyperdrive \
+  --connection-string "postgres://user:password@your-host:5432/mydb"
+```
+
+This will output a Hyperdrive `id` — copy it.
+
+**2. Install your chosen PostgreSQL driver:**
+
+```bash
+# Option A — postgres.js (recommended)
+bun add postgres
+
+# Option B — node-postgres (pg)
+bun add pg && bun add -d @types/pg
+```
+
+**3. Configure `bunflare.config.ts`:**
+
+```ts
+import type { BunflareConfig } from "bunflare";
+
+export default {
+  sqlite: { binding: "DB" },         // D1 → bun:sqlite
+  sql: {
+    type: "hyperdrive",              // Use Hyperdrive backend for Bun.sql
+    binding: "HYPERDRIVE",           // Must match the binding name in wrangler.jsonc
+    driver: "postgres",              // "postgres" | "pg"
+  },
+} satisfies BunflareConfig;
+```
+
+**4. Configure `wrangler.jsonc`:**
+
+```jsonc
+{
+  "name": "my-app",
+  "main": "dist/index.js",
+  "compatibility_date": "2025-02-24",
+  // ✅ Required! Postgres drivers use Node.js built-ins.
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "<your-hyperdrive-id>",
+      // For local development only (not deployed):
+      "localConnectionString": "postgres://user:password@127.0.0.1:5433/mydb"
+    }
+  ]
+}
+```
+
+> **⚠️ `nodejs_compat` is mandatory.** PostgreSQL drivers (`postgres.js`, `pg`) depend on Node.js built-ins like `node:stream`, `node:buffer`, and `node:events`. Without this flag, Wrangler will fail to bundle your Worker with an error like `Could not resolve "node:stream"`.
+
+#### Choosing a Driver
+
+Bunflare is **library-agnostic** — you pick the driver, Bunflare adapts. The `driver` field in `bunflare.config.ts` tells Bunflare which internal adapter to use.
+
+| `driver` value | Library | Install command | Notes |
+|---|---|---|---|
+| `"postgres"` *(default)* | [postgres.js](https://github.com/porsager/postgres) | `bun add postgres` | Ships a dedicated Cloudflare Workers build (`/cf/`) |
+| `"pg"` | [node-postgres](https://node-postgres.com/) | `bun add pg` | Bunflare translates templates to `$1, $2` syntax internally |
+
+> **💡 Recommendation:** Use `postgres.js`. It has first-class Cloudflare Workers support and is significantly more performant. Use `pg` only if you are migrating an existing codebase that already depends on it.
+
+#### Local Development with Docker
+
+You need a running PostgreSQL instance locally. The simplest approach is Docker:
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: postgres:latest
+    container_name: my_postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5433:5432"   # 5433 avoids conflicts with any local Postgres on 5432
+```
+
+```bash
+docker-compose up -d
+bun run dev
+```
+
+> **⚠️ Use `127.0.0.1`, never `localhost`** in your `localConnectionString`. Modern Node.js (used internally by Wrangler/Miniflare) resolves `localhost` to the IPv6 address `::1` first. Docker Desktop, however, maps ports only to IPv4 (`127.0.0.1`). This mismatch causes a silent `connection attempt failed` error even though the container is running. Always be explicit:
+>
+> ```jsonc
+> // ❌ This may silently fail
+> "localConnectionString": "postgres://user:password@localhost:5433/mydb"
+>
+> // ✅ This works reliably
+> "localConnectionString": "postgres://user:password@127.0.0.1:5433/mydb"
+> ```
+
+#### Using a Custom Shim
+
+If you need complete control — e.g., to use a connection pool manager, add mTLS, or inject custom middleware — you can provide your own shim file:
+
+```ts
+// bunflare.config.ts
+export default {
+  sql: {
+    type: "hyperdrive",
+    binding: "HYPERDRIVE",
+    custom: "./my-sql-shim.ts",  // path relative to project root
+  },
+} satisfies BunflareConfig;
+```
+
+Your shim file must export a `sql` tagged-template function compatible with the `Bun.sql` API.
+
+#### D1 vs Hyperdrive: When to Use Each
+
+| | **D1** (`bun:sqlite`) | **Hyperdrive** (`Bun.sql`) |
+|---|---|---|
+| **Database engine** | Cloudflare-managed SQLite | Any external PostgreSQL |
+| **API style** | `new Database()` — sync-style with forced `await` | Tagged templates — fully async |
+| **Latency** | Ultra-low (edge-native) | Low (pooled + cached by Hyperdrive) |
+| **Best for** | Sessions, flags, small tables | Complex queries, existing Postgres DBs |
+| **wrangler.jsonc key** | `d1_databases` | `hyperdrive` |
+| **Extra dependency** | None | `postgres` or `pg` |
+
+---
+
+
 
 ### `bun:kv` → Cloudflare KV
 
@@ -513,9 +687,14 @@ import type { BunflareConfig } from "bunflare";
 
 export default {
   entrypoint: "./index.ts",
-  sqlite: { binding: "DB" },
+  sqlite: { binding: "DB" },             // bun:sqlite → D1
+  sql: {
+    type: "hyperdrive",                  // Bun.sql → Hyperdrive + Postgres
+    binding: "HYPERDRIVE",
+    driver: "postgres",                  // "postgres" | "pg"
+  },
   kv:     { binding: "CACHE" },
-  redis:  { binding: "CACHE" }, // same binding, both work!
+  redis:  { binding: "CACHE" },          // same binding, both work!
   r2:     { binding: "STORAGE" },
   frontend: {
     entrypoint: "./public/index.html",
@@ -530,8 +709,17 @@ export default {
   "name": "my-app",
   "main": "dist/index.js",
   "compatibility_date": "2025-02-24",
+  // Required when using PostgreSQL drivers
+  "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     { "binding": "DB", "database_name": "my-db", "database_id": "..." }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "<your-hyperdrive-id>",
+      "localConnectionString": "postgres://user:password@127.0.0.1:5433/mydb"
+    }
   ],
   "kv_namespaces": [
     { "binding": "CACHE", "id": "..." }
@@ -697,6 +885,43 @@ export default Bun.serve({
 }
 ```
 
+### Full-Stack: D1 + PostgreSQL Simultaneously 🐘🗄️
+
+This recipe shows Bunflare's most powerful capability: running **two databases at once** in the same Worker — D1 (SQLite) for fast edge-native access and PostgreSQL (via Hyperdrive) for full relational power.
+
+```ts
+import { Database } from "bun:sqlite";
+
+export default Bun.serve({
+  routes: {
+    "/api/hybrid": async () => {
+      const results: Record<string, unknown> = {};
+
+      // 1. D1 / SQLite — fast, edge-native, no connection overhead
+      const db = new Database("DB");
+      await (db.run("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, token TEXT)") as any);
+      await (db.run("INSERT INTO sessions (token) VALUES (?)", [`tok_${Date.now()}`]) as any);
+      const d1 = await (db.prepare("SELECT * FROM sessions ORDER BY id DESC LIMIT 1").all() as any);
+      results.d1 = d1.results; // [ { id: 1, token: "tok_..." } ]
+
+      // 2. PostgreSQL / Hyperdrive — complex queries, joins, full SQL power
+      await Bun.sql`CREATE TABLE IF NOT EXISTS orders (id SERIAL PRIMARY KEY, total NUMERIC, user_id INT)`;
+      await Bun.sql`INSERT INTO orders (total, user_id) VALUES (${99.99}, ${1})`;
+      results.postgres = await Bun.sql`
+        SELECT o.id, o.total, o.user_id
+        FROM orders o
+        ORDER BY o.id DESC
+        LIMIT 5
+      `;
+
+      return Response.json(results);
+    }
+  }
+});
+```
+
+> **💡 Design Tip:** Keep session data, feature flags, and small lookup tables in D1 (zero latency, no cold starts). Keep your main application data, complex relations, and analytics in PostgreSQL via Hyperdrive.
+
 ---
 
 ## 🗺️ Roadmap
@@ -707,7 +932,8 @@ export default Bun.serve({
 | `v0.2` | API Parity: R2, serve, fullstack HTML, live-reload | ✅ Done |
 | `v0.3` | Testing: Unit + Miniflare + CI/CD | 🚧 In Progress |
 | `v0.4` | DX: `bunflare init`, binding validation, better errors | 📅 Planned |
-| `v0.5` | `Bun.sql` → Hyperdrive, `Bun.CryptoHasher`, UUIDv7 | 📅 Planned |
+| `v0.5` | `Bun.sql` → Hyperdrive + multi-driver PostgreSQL support | ✅ Done |
+| `v0.6` | `Bun.CryptoHasher` (streaming), `randomUUIDv7()` | 📅 Planned |
 | `v1.0` | Stable npm release, full docs, VS Code extension | 📅 Planned |
 
 ---
@@ -780,15 +1006,24 @@ bunflare/
 │   ├── types.ts          # TypeScript types
 │   ├── resolvers/        # Bun namespace resolver
 │   └── shims/            # All shim implementations
-│       ├── sqlite.ts     # D1 shim
+│       ├── d1/           # bun:sqlite → D1 shim
+│       │   ├── database.ts  # Class-based Database/Statement API
+│       │   ├── logic.ts     # Bun.sql → D1 tagged template engine
+│       │   └── sql.ts       # Shim code generator
+│       ├── hyperdrive/   # Bun.sql → Hyperdrive + PostgreSQL shim
+│       │   ├── logic.ts     # Multi-driver adapter (postgres.js / pg / mysql2)
+│       │   └── sql.ts       # Shim code generator
 │       ├── kv/           # KV + Redis shims
 │       │   ├── index.ts
-│       │   └── logic.ts  # Pure logic (testable!)
+│       │   └── logic.ts     # Pure logic — also used in unit tests
 │       ├── r2.ts         # R2 shim
 │       ├── crypto.ts     # WebCrypto shim
 │       ├── env.ts        # Env shim
 │       └── serve.ts      # Serve shim
 ├── tests/      # All tests live here
+│   ├── hyperdrive.test.ts   # Hyperdrive driver & template translation tests
+│   ├── sql.test.ts          # D1 SQL shim tests
+│   └── ...
 ├── app/        # Example fullstack application
 └── docs/       # Documentation extras
 ```

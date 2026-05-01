@@ -58,7 +58,7 @@ export function App() {
           alt="logo"
         />
         <h1 className="text-[3.5rem] font-extrabold tracking-tight bg-gradient-to-br from-[#ff8800] to-[#ffcc00] bg-clip-text text-transparent leading-none">
-          Bunflare + React@@@
+          Bunflare + React!
         </h1>
         <p className="text-[#a0a0a0] text-xl mt-2 font-normal">
           Fullstack Bun APIs on Cloudflare Workers

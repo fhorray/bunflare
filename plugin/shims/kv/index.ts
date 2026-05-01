@@ -7,7 +7,7 @@ import { join } from "path";
  */
 export function getKvShim(bindingName: string): string {
   // Logic is now in the same folder as logic.ts
-  const logicPath = join(__dirname, "logic.ts");
+  const logicPath = join(import.meta.dir, "logic.ts");
   
   try {
     let content = readFileSync(logicPath, "utf-8");

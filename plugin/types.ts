@@ -39,10 +39,16 @@ export interface R2BindingConfig {
   binding: string;
 }
 
-/** Describes Cloudflare Hyperdrive config for PostgreSQL (replacement for Bun.SQL). */
-export interface HyperdriveConfig {
-  /** The Hyperdrive binding name as declared in wrangler.toml. */
-  binding: string;
+/** Describes the SQL backend for Bun.SQL (D1 or Hyperdrive). */
+export interface SQLConfig {
+  /** The backend type. 'd1' for SQLite (Cloudflare D1) or 'hyperdrive' for Postgres/MySQL. */
+  type?: "d1" | "hyperdrive";
+  /** The binding name as declared in wrangler.toml. */
+  binding?: string;
+  /** The target driver library to use for the shim. */
+  driver?: "postgres" | "pg" | "mysql2";
+  /** Path to a custom implementation file for the Bun.sql shim. */
+  custom?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,9 +84,9 @@ export interface BunflareOptions {
   r2?: R2BindingConfig;
 
   /** 
-   * Map `Bun.SQL` / `Bun.sql` → Cloudflare Hyperdrive + postgres.
+   * Map `Bun.SQL` / `Bun.sql` → Cloudflare D1 or Hyperdrive.
    */
-  sql?: HyperdriveConfig;
+  sql?: SQLConfig;
 
   /** 
    * Map `bun:kv` / `Bun.kv` → Cloudflare KV.

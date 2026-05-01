@@ -3,6 +3,9 @@
   "name": "bunflare-app",
   "main": "dist/index.js",
   "compatibility_date": "2025-02-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "d1_databases": [
     {
       "binding": "DB",
@@ -32,5 +35,12 @@
   },
   "assets": {
     "directory": "dist/public"
-  }
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "e8467aa826f34a82a4cf25a635cea691",
+      "localConnectionString": "postgres://user:password@127.0.0.1:5433/bunflare"
+    }
+  ]
 }

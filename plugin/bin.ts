@@ -30,7 +30,7 @@ function discoverBindings(): Partial<BunflareOptions> {
 
   try {
     const content = readFileSync(wranglerPath, "utf-8");
-    const json = JSON.parse(content.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, ""));
+    const json = JSON.parse(content.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, ""));
     const options: Partial<BunflareOptions> = {};
 
     if (json.d1_databases?.[0]) {
@@ -125,6 +125,7 @@ async function runBuild(isDev = false, isRebuild = false) {
     }
     return false;
   } catch (err) {
+    console.error(err);
     process.stderr.write(`${pc.red("crashed:")} ${err instanceof Error ? err.message : String(err)}\n`);
     return false;
   }
@@ -210,7 +211,8 @@ if (command === "dev") {
     }
   });
 } else if (command === "build") {
-  await runBuild(args.includes("--dev"));
+  const success = await runBuild(args.includes("--dev"));
+  if (!success) process.exit(1);
 } else {
   console.log(`${pc.bold("Bunflare CLI")}`);
   console.log(`Usage: bunflare <dev|build|deploy>`);

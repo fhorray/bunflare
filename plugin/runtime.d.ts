@@ -1,23 +1,34 @@
 /**
  * Type declarations for bunflare virtual modules.
+ * These augment the official Bun types to work in Cloudflare Workers.
  */
 
+/**
+ * The 'bun' module - shims for Bun.sql, Bun.password, etc.
+ */
+declare module "bun" {
+  export interface SQLQuery<T = any> extends Promise<T> {
+    values(): Promise<any[][]>;
+    run(): Promise<{ success: boolean; error?: string }>;
+  }
+
+  export function sql(strings: TemplateStringsArray | string, ...values: any[]): SQLQuery;
+  
+  export class SQL {
+    constructor(options?: any);
+  }
+
+  export const password: {
+    hash(password: string | Uint8Array, options?: any): Promise<string>;
+    verify(password: string | Uint8Array, hash: string): Promise<boolean>;
+  };
+
+  export const hash: (data: string | Uint8Array) => Promise<string>;
+}
+
 declare module "bun:env" {
-  /**
-   * The shimmed Bun.env object. 
-   * Augment the 'BunflareEnv' interface in your project to get full type safety.
-   */
   export const env: BunflareEnv;
-
-  /**
-   * Utility to set the environment object at runtime.
-   */
   export function setEnv(newEnv: unknown): void;
-
-  /**
-   * Higher-order function to wrap your Cloudflare Worker fetch handler.
-   * Automatically calls setEnv(env) for you.
-   */
   export function withBunflare<E = BunflareEnv>(
     handler: (request: Request, env: E, ctx: ExecutionContext) => Response | Promise<Response>
   ): {
@@ -30,6 +41,10 @@ declare module "bun:sqlite" {
     constructor(filename?: string);
     query(sql: string): {
       all(...params: unknown[]): unknown[];
+    };
+    prepare(sql: string): {
+      all(...params: unknown[]): unknown[];
+      run(...params: unknown[]): any;
     };
     run(sql: string, ...params: unknown[]): void;
   }
@@ -45,50 +60,31 @@ declare module "bun:kv" {
 }
 
 /**
- * Mock of the Bun Server object provided to fetch()
+ * Internal shims for preamble injection.
+ * You typically don't need to import these directly.
  */
-interface BunServer {
-  id: string;
-  hostname: string;
-  port: number;
-  pendingRequests: number;
-  pendingWebSockets: number;
-  requestIP: () => string | null;
-  upgrade: <T = unknown>(request: Request, options?: { data?: T }) => boolean;
-  /** Cloudflare-specific objects */
-  cloudflare: {
-    env: unknown;
-    ctx: ExecutionContext;
-  };
-}
-
-interface ExecutionContext {
-  waitUntil(promise: Promise<unknown>): void;
-  passThroughOnException(): void;
-}
-
-/**
- * Interface that can be augmented by the user to provide types for Bun.env.
- */
-interface BunflareEnv {
-  [key: string]: unknown;
-}
-
-declare module "bunflare:redis" {
+declare module "bunflare:kv" {
+  export const redis: any;
   export class RedisClient {
-    constructor(options?: { url?: string; token?: string });
-    get(key: string): Promise<string | null>;
-    set(key: string, value: string): Promise<"OK">;
+    constructor(options?: any);
   }
 }
 
+declare module "bunflare:sql" {
+  export const sql: any;
+  export const SQL: any;
+}
+
 declare module "bunflare:serve" {
-  export function serve(options: {
-    fetch?: (request: Request, server: BunServer) => Response | Promise<Response>;
-    routes?: Record<string, (request: Request, server: BunServer) => Response | Promise<Response>>;
-    port?: number;
-    hostname?: string;
-  }): unknown;
+  export function serve(options: any): any;
+}
+
+declare module "bunflare:crypto" {
+  export const BunCrypto: any;
+}
+
+declare module "bunflare:env" {
+  export const env: any;
 }
 
 declare module "bunflare:r2" {
@@ -103,4 +99,25 @@ declare module "bunflare:r2" {
 
   export function file(path: string): BunFile;
   export function write(path: string, data: any): Promise<number>;
+}
+
+/**
+ * Global interfaces
+ */
+interface BunServer {
+  id: string;
+  hostname: string;
+  port: number;
+  pendingRequests: number;
+  pendingWebSockets: number;
+  requestIP: () => string | null;
+  upgrade: <T = unknown>(request: Request, options?: { data?: T }) => boolean;
+  cloudflare: {
+    env: any;
+    ctx: any;
+  };
+}
+
+interface BunflareEnv {
+  [key: string]: any;
 }

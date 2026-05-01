@@ -52,7 +52,7 @@ describe("bunflare integration tests", () => {
     // The output should contain the shimmed Database implementation
     expect(output).toContain('class Database');
     expect(output).toContain('"MY_D1"');
-    expect(output).toContain('env[defaultBinding]');
+    expect(output).toContain('globalThis.Bun?.env');
   });
 
   test("should inject preamble for Bun.password", async () => {
