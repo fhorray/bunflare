@@ -1,13 +1,13 @@
 {
   "name": "bunflare",
-  "version": "0.1.12",
+  "version": "0.2.2",
   "description": "Bunflare plugin for full-stack Cloudflare Workers applications",
   "main": "src/index.ts",
   "bin": {
     "bunflare": "./src/cli/index.ts"
   },
   "scripts": {
-    "build": "bun build src/index.ts"
+    "build": "bun build src/index.ts --outdir ./dist"
   },
   "exports": {
     ".": "./src/index.ts",
