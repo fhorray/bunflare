@@ -191,9 +191,7 @@ import indexHtml from "../public/index.html";
 const app = new Hono();
 
 // Serve static files from the public directory
-app.use("/public/*", serveStatic({ root: "./" }));
-app.use("/favicon.ico", serveStatic({ path: "./public/favicon.ico" }));
-app.use("/logo.png", serveStatic({ path: "./public/logo.png" }));
+app.use("*", serveStatic({ root: "./public" }));
 
 app.get("/", (c) => c.html(indexHtml));
 
