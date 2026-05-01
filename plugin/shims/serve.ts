@@ -16,6 +16,9 @@ export function serve(options) {
       // 1. Automatically register the environment bindings
       setEnv(env);
 
+      const url = new URL(request.url);
+      console.log(\`[bunflare] 📥 \${request.method} \${url.pathname}\`);
+
       // 2. Prepare a mock Bun 'Server' object
       const server = {
         id: "bunflare-shim",
@@ -32,24 +35,33 @@ export function serve(options) {
 
       // 3. Call the original Bun fetch handler (with routing support)
       const { routes, fetch: fallbackFetch, development } = options;
-      const url = new URL(request.url);
-
-      // Internal HMR Heartbeat
-      if (development && url.pathname === "/_bunflare/hmr") {
-        const buildId = (globalThis as any)._BUNFLARE_BUILD_ID || (Math.random().toString(36).substring(2));
-        (globalThis as any)._BUNFLARE_BUILD_ID = buildId;
-        return new Response(buildId, { headers: { "Access-Control-Allow-Origin": "*" } });
-      }
 
       let response = null;
 
       if (routes) {
         for (const pattern in routes) {
           const handler = routes[pattern];
+          
+          // Bun supports simple string patterns and URLPattern-like syntax
           const urlPattern = new URLPattern({ pathname: pattern });
-          if (urlPattern.test(request.url)) {
-            response = await handler(request, server);
-            break;
+          const match = urlPattern.exec(request.url);
+          
+          if (match) {
+            // In Bun, params are attached to the request object
+            // We cast to any to allow property assignment
+            (request as any).params = match.pathname.groups;
+            
+            // Support for method-based handlers (e.g. { GET: handler, POST: handler })
+            if (typeof handler === "object" && handler !== null) {
+              const methodHandler = handler[request.method];
+              if (methodHandler) {
+                response = await methodHandler(request, server);
+              }
+            } else if (typeof handler === "function") {
+              response = await handler(request, server);
+            }
+            
+            if (response) break;
           }
         }
       }
@@ -58,7 +70,7 @@ export function serve(options) {
         response = await fallbackFetch(request, server);
       }
 
-      // 4. Automatic Static Assets Proxy (Option A)
+      // 4. Automatic Static Assets Proxy
       if (!response) {
         const assets = env.ASSETS;
         if (assets && typeof assets.fetch === "function") {
@@ -77,36 +89,26 @@ export function serve(options) {
       const contentType = response.headers.get("content-type") || "";
       if (development && contentType.toLowerCase().includes("text/html")) {
         try {
-          const buildId = (globalThis as any)._BUNFLARE_BUILD_ID || (Math.random().toString(36).substring(2));
-          (globalThis as any)._BUNFLARE_BUILD_ID = buildId;
-          
           let html = await response.text();
           const hmrScript = \`
-<script>
-  (function() {
-    const buildId = "\${buildId}";
-    let isChecking = false;
-    async function checkServer() {
-      if (isChecking) return;
-      isChecking = true;
-      try {
-        const res = await fetch("/_bunflare/hmr");
-        const serverId = await res.text();
-        if (serverId && serverId !== buildId) {
-          console.log("[bunflare] New build detected, reloading...");
-          location.reload();
-          return;
-        }
-      } catch (e) {
-        // Server is likely rebooting
-      } finally {
-        isChecking = false;
-        setTimeout(checkServer, 500);
-      }
-    }
-    setTimeout(checkServer, 500);
-  })();
-</script>\`;
+            <script>
+              (function() {
+                if (window.BUNFLARE_LR) return;
+                window.BUNFLARE_LR = true;
+                function connect() {
+                  const script = document.createElement('script');
+                  script.src = 'http://' + window.location.hostname + ':35729/livereload.js?snipver=1';
+                  script.async = true;
+                  script.onerror = () => {
+                    console.warn('[bunflare] Livereload connection failed. Retrying in 5s...');
+                    setTimeout(connect, 5000);
+                  };
+                  document.head.appendChild(script);
+                }
+                connect();
+              })();
+            </script>
+          \`;
           
           if (html.includes("</body>")) {
             html = html.replace("</body>", hmrScript + "</body>");
@@ -119,6 +121,7 @@ export function serve(options) {
           newResponse.headers.set("Content-Type", "text/html; charset=utf-8");
           return newResponse;
         } catch (e) {
+          console.error("[bunflare] Failed to inject live-reload script:", e);
           return response;
         }
       }

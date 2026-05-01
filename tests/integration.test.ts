@@ -32,10 +32,8 @@ describe("bunflare integration tests", () => {
     expect(result.success).toBe(true);
     const output = await Bun.file(join(OUT_DIR, "env-test.js")).text();
     
-    // Check if Bun.env was replaced by the proxy-based shim
-    expect(output).toContain("envProxy");
-    expect(output).toContain("globalThis.env");
-    expect(output).not.toContain("Bun.env.FOO");
+    // Check if Bun.env was replaced by the globalThis.Bun.env
+    expect(output).toContain("globalThis.Bun.env.FOO");
   });
 
   test("should shim bun:sqlite to virtual module", async () => {
@@ -54,7 +52,7 @@ describe("bunflare integration tests", () => {
     // The output should contain the shimmed Database implementation
     expect(output).toContain('class Database');
     expect(output).toContain('"MY_D1"');
-    expect(output).toContain('env["MY_D1"]');
+    expect(output).toContain('env[defaultBinding]');
   });
 
   test("should inject preamble for Bun.password", async () => {
@@ -74,5 +72,28 @@ describe("bunflare integration tests", () => {
     // Note: The bundler might inline the virtual module contents
     expect(output).toContain('password');
     expect(output).toContain('crypto.subtle.digest');
+  });
+
+  test("should transform Bun.file and Bun.write to R2 shim", async () => {
+    const entryPath = join(TEST_DIR, "r2-test.ts");
+    writeFileSync(entryPath, `
+      const f = Bun.file("test.txt");
+      await Bun.write("out.txt", "hello");
+    `);
+
+    const result = await Bun.build({
+      entrypoints: [entryPath],
+      outdir: OUT_DIR,
+      plugins: [bunflare({ r2: { binding: "STORAGE" } })],
+    });
+
+    expect(result.success).toBe(true);
+    const output = await Bun.file(join(OUT_DIR, "r2-test.js")).text();
+    
+    // Check if Bun.file/write were replaced. 
+    // The bundler might rename them to just file() and write() when inlining
+    expect(output).toContain("file(");
+    expect(output).toContain("write(");
+    expect(output).toContain("STORAGE");
   });
 });

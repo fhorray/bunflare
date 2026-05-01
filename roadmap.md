@@ -53,12 +53,15 @@ await Bun.write("uploads/new.txt", "Hello world");
 ```
 
 **Implementation Plan:**
-- [ ] Create `plugin/shims/r2.ts`: Generate shim that wraps an R2 binding
-- [ ] Add `r2` option to `BunflareOptions` in `plugin/types.ts`
-- [ ] Register global replacement patterns for `Bun.file(...)` and `Bun.write(...)` in `plugin/index.ts`
-- [ ] Add `declare module "bunflare:r2"` to `plugin/runtime.d.ts`
-- [ ] Add `R2Bucket` to `app/env.d.ts` and `app/wrangler.jsonc`
-- [ ] Write integration test in `tests/integration.test.ts`
+- [x] Create `plugin/shims/r2.ts`: Generate shim that wraps an R2 binding
+- [x] Add `r2` option to `BunflareOptions` in `plugin/types.ts`
+- [x] Register global replacement patterns for `Bun.file(...)` and `Bun.write(...)` in `plugin/index.ts`
+- [x] Add `declare module "bunflare:r2"` to `plugin/runtime.d.ts`
+- [x] Add `R2Bucket` to `app/env.d.ts` and `app/wrangler.jsonc`
+- [x] Write integration test in `tests/integration.test.ts`
+- [x] Verify real file upload in `app/index.ts`
+
+**Status: ✅ Done**
 
 **Config API:**
 ```ts
@@ -401,7 +404,7 @@ bun run dev  # → wrangler dev (with custom build)
 | Version | Goal | Target |
 |---|---|---|
 | `v0.1` | Foundation: env, sqlite, kv, redis, crypto | ✅ Done |
-| `v0.2` | API Parity: R2, Hyperdrive, CryptoHasher, UUID | Phase 1 |
+| `v0.2` | API Parity: R2, Hyperdrive, CryptoHasher, UUID | ✅ Done |
 | `v0.3` | Testing: Unit + Miniflare + CI/CD | Phase 2 |
 | `v0.4` | DX: Binding validation, CLI, better errors | Phase 3 |
 | `v1.0` | npm Publication: Restructure, docs, stable API | Phase 4 |

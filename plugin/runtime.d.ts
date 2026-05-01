@@ -90,3 +90,17 @@ declare module "bunflare:serve" {
     hostname?: string;
   }): unknown;
 }
+
+declare module "bunflare:r2" {
+  export interface BunFile {
+    text(): Promise<string>;
+    json(): Promise<any>;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    bytes(): Promise<Uint8Array>;
+    exists(): Promise<boolean>;
+    stream: Promise<ReadableStream | null>;
+  }
+
+  export function file(path: string): BunFile;
+  export function write(path: string, data: any): Promise<number>;
+}

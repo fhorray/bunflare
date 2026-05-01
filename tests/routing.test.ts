@@ -4,12 +4,13 @@ import { getServeShim } from "../plugin/shims/serve.ts";
 describe("Routing Shim", () => {
   test("getServeShim generates routing logic", () => {
     const shim = getServeShim();
-    
+
     // Check for core routing elements
-    expect(shim).toContain("const { routes, fetch: fallbackFetch } = options;");
+    expect(shim).toContain("const { routes, fetch: fallbackFetch, development } = options;");
     expect(shim).toContain("new URLPattern({ pathname: pattern })");
-    expect(shim).toContain("urlPattern.test(request.url)");
-    expect(shim).toContain("return handler(request, server)");
+    expect(shim).toContain("const match = urlPattern.exec(request.url)");
+    expect(shim).toContain("(request as any).params = match.pathname.groups;");
+    expect(shim).toContain("response = await handler(request, server)");
   });
 
   test("serve shim handles 404 when no route or fetch is provided", () => {

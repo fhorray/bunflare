@@ -1,0 +1,36 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "bunflare",
+      "dependencies": {
+        "livereload": "^0.10.3",
+      },
+      "devDependencies": {
+        "@types/livereload": "^0.9.5",
+      },
+    },
+  },
+  "packages": {
+    "@types/livereload": ["@types/livereload@0.9.5", "", { "dependencies": { "@types/ws": "*" } }, "sha512-2RXcRKdivPmn67pwjytvHoRv46AeXaLYVUWA0zkel1XSAOH5i71G0KfUdE5u3g80T155gR3Fo3ilVaqparLsVA=="],
+
+    "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],
+
+    "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
+
+    "chokidar": ["chokidar@4.0.3", "", { "dependencies": { "readdirp": "^4.0.1" } }, "sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA=="],
+
+    "livereload": ["livereload@0.10.3", "", { "dependencies": { "chokidar": "^4.0.3", "livereload-js": "^4.0.2", "opts": "^2.0.2", "ws": "^8.4.3" }, "bin": { "livereload": "bin/livereload.js" } }, "sha512-llSb8HrtSH7ByPFMc8WTTeW3oy++smwgSA8JVGzEn8KiDPESq6jt1M4ZKKkhKTrhn2wvUOadQq4ip10E5daZ3w=="],
+
+    "livereload-js": ["livereload-js@4.0.2", "", {}, "sha512-Fy7VwgQNiOkynYyNBTo3v9hQUhcW5pFAheJN148+DTgpShjsy/22pLHKKwDK5v0kOsZsJBK+6q1PMgLvRmrwFQ=="],
+
+    "opts": ["opts@2.0.2", "", {}, "sha512-k41FwbcLnlgnFh69f4qdUfvDQ+5vaSDnVPFI/y5XuhKRq97EnVVneO9F1ESVCdiVu4fCS2L8usX3mU331hB7pg=="],
+
+    "readdirp": ["readdirp@4.1.2", "", {}, "sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg=="],
+
+    "undici-types": ["undici-types@7.19.2", "", {}, "sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg=="],
+
+    "ws": ["ws@8.20.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA=="],
+  }
+}

@@ -5,7 +5,7 @@
  * "any" is intentionally avoided throughout.
  */
 
-export type KnownShimPath = "sqlite" | "redis" | "kv" | "env" | "crypto" | "serve";
+export type KnownShimPath = "sqlite" | "redis" | "kv" | "env" | "crypto" | "serve" | "r2";
 
 
 // ---------------------------------------------------------------------------
@@ -24,19 +24,13 @@ export interface KVBindingConfig {
   binding: string;
 }
 
-/** Describes an Upstash Redis configuration (replacement for Bun.redis). */
-export interface UpstashRedisConfig {
-  provider: "upstash";
-  /**
-   * The Upstash REST URL. Can be a literal or a `process.env.XXX` reference.
-   * If omitted, the shim reads `UPSTASH_REDIS_REST_URL` from the Workers env.
+/** Describes a Redis compatibility layer over Cloudflare KV. */
+export interface RedisBindingConfig {
+  /** 
+   * The Cloudflare KV binding name to use for Redis emulation.
+   * If omitted, uses the default 'kv' binding.
    */
-  url?: string;
-  /**
-   * The Upstash REST token. If omitted, reads `UPSTASH_REDIS_REST_TOKEN`
-   * from the Workers env.
-   */
-  token?: string;
+  binding?: string;
 }
 
 /** Describes a Cloudflare R2 bucket binding (replacement for Bun.file / Bun.s3). */
@@ -57,39 +51,56 @@ export interface HyperdriveConfig {
 
 /**
  * Options accepted by the `bunflare()` plugin factory.
- *
- * Each key corresponds to a Bun API family; supply a config object to enable
- * that shim. Omitting a key leaves the import untouched.
+ * 
+ * Each key corresponds to a Bun API family. Supply a configuration object to 
+ * enable that shim, or omit it to leave the import untouched.
+ * 
+ * Note: When using the Bunflare CLI, many of these are automatically discovered
+ * from your wrangler.jsonc/toml file if not explicitly provided here.
  */
 export interface BunflareOptions {
-  /** Map `bun:sqlite` (Database) → Cloudflare D1. */
+  /** 
+   * Map `bun:sqlite` (Database) → Cloudflare D1.
+   * @default Automatically discovered from wrangler.jsonc (d1_databases[0])
+   */
   sqlite?: D1BindingConfig;
 
-  /** Map `Bun.redis` / `Bun.RedisClient` → Upstash Redis via HTTP. */
-  redis?: UpstashRedisConfig;
+  /** 
+   * Map `Bun.redis` / `Bun.RedisClient` → Cloudflare KV (Emulated).
+   * @deprecated We recommend using 'bun:kv' directly for native Cloudflare performance.
+   */
+  redis?: RedisBindingConfig;
 
-  /** Map `Bun.file` / `Bun.write` / `Bun.s3` → Cloudflare R2. */
+  /** 
+   * Map `Bun.file` / `Bun.write` / `Bun.s3` → Cloudflare R2.
+   * @default Automatically discovered from wrangler.jsonc (r2_buckets[0])
+   */
   r2?: R2BindingConfig;
 
-  /** Map `Bun.SQL` / `Bun.sql` → Cloudflare Hyperdrive + postgres. */
+  /** 
+   * Map `Bun.SQL` / `Bun.sql` → Cloudflare Hyperdrive + postgres.
+   */
   sql?: HyperdriveConfig;
 
-  /** Map `bun:kv` / `Bun.kv` → Cloudflare KV. */
+  /** 
+   * Map `bun:kv` / `Bun.kv` → Cloudflare KV.
+   * @default Automatically discovered from wrangler.jsonc (kv_namespaces[0])
+   */
   kv?: KVBindingConfig;
 
   /**
-   * Map `Bun.env` reads → the Workers `env` object.
-   * Enabled by default when set to `true`.
+   * Map `Bun.env` reads → the Cloudflare Workers `env` object.
+   * @default true
    */
   env?: boolean | { verbose?: boolean };
 
   /**
-   * Static assets and HTML bundling configuration.
+   * Configuration for bundling frontend assets (HTML, CSS, JS).
    */
-  html?: {
-    /** The HTML entrypoint file, e.g. "./index.html" */
+  frontend?: {
+    /** The HTML entrypoint file, e.g. "./public/index.html" */
     entrypoint: string;
-    /** The directory where bundled assets will be saved, e.g. "./dist/static" */
+    /** The directory where bundled assets will be saved, e.g. "./dist/public" */
     outdir: string;
   };
 }
@@ -127,6 +138,17 @@ export interface GlobalShimEntry {
    * Useful for injecting imports needed by the replacement.
    */
   preamble?: string;
+}
+
+/**
+ * Top-level configuration for the Bunflare CLI and Plugin.
+ */
+export interface BunflareConfig extends BunflareOptions {
+  /**
+   * The main entrypoint for the backend Worker.
+   * @default "./index.ts"
+   */
+  entrypoint?: string;
 }
 
 /**

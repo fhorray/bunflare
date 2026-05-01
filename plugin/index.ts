@@ -1,152 +1,213 @@
 import type { BunPlugin } from "bun";
-import type { BunflareOptions, ShimRegistry, ShimEntry, GlobalShimEntry } from "./types.ts";
-import { registerBunNamespaceResolver } from "./resolvers/bun-namespace.ts";
 import { getSqliteShim } from "./shims/sqlite.ts";
-import { getRedisShim } from "./shims/redis.ts";
-import { getKvShim } from "./shims/kv.ts";
+import { getKvShim } from "./shims/kv/index.ts";
 import { getCryptoShim } from "./shims/crypto.ts";
 import { getEnvShim } from "./shims/env.ts";
 import { getServeShim } from "./shims/serve.ts";
-import { registerGlobalResolver } from "./resolvers/globals.ts";
+import { getR2Shim } from "./shims/r2.ts";
+import pc from "picocolors";
+import type { BunflareConfig, BunflareOptions } from "./types.ts";
+import { readFileSync } from "fs";
 
-/**
- * The main bunflare plugin factory.
- * 
- * This plugin transforms Bun-specific APIs into Cloudflare Workers equivalents
- * at build time.
- * 
- * @param options Configuration for which shims to enable and their binding names.
- * @returns A BunPlugin instance.
- */
-export function bunflare(options: BunflareOptions = {}): BunPlugin {
-  return {
-    name: "bunflare",
-    setup(build) {
-      const registry: ShimRegistry = {
-        modules: [],
-        globals: [],
-      };
+export type { BunflareConfig, BunflareOptions };
 
-      // 1. Initialize shims based on options
-      initializeRegistry(registry, options);
+interface ShimModule {
+  path: string;
+  contents: string;
+}
 
-      // 2. Register onResolve for bun:* namespace
-      registerBunNamespaceResolver(build, registry);
+interface GlobalReplacement {
+  pattern: RegExp;
+  replacement: string;
+}
 
-      // 3. Register onLoad for our virtual "bunflare" namespace
-      build.onLoad({ filter: /.*/, namespace: "bunflare" }, (args) => {
-        const shim = registry.modules.find((m) => m.path === args.path);
-        if (!shim) return undefined;
-
-        return {
-          contents: shim.contents,
-          loader: "ts",
-        };
-      });
-
-      // 4. Register global transformations (Bun.env, Bun.sql, etc)
-      registerGlobalResolver(build, registry);
-    },
-  };
+interface ShimRegistry {
+  modules: ShimModule[];
+  globals: GlobalReplacement[];
+  preamble: string;
 }
 
 /**
  * Populates the registry with shim contents and global patterns based on user options.
  */
 function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): void {
-  // SQLite -> D1
+  // 1. SQLite (bun:sqlite) -> Cloudflare D1
   if (options.sqlite) {
-    if (!options.sqlite.binding.trim()) {
-      throw new Error("[bunflare] options.sqlite.binding cannot be empty");
-    }
+    console.log(`  ${pc.gray("↳")} ${pc.cyan("sqlite")} ${pc.gray("shim enabled -> D1:")} ${pc.white(options.sqlite.binding)}`);
     registry.modules.push({
       path: "sqlite",
       contents: getSqliteShim(options.sqlite.binding),
     });
   }
 
-  // Bun.env -> Workers env
-  if (options.env !== false) {
-    registry.modules.push({
-      path: "env",
-      contents: getEnvShim(),
-    });
-
-    registry.globals.push({
-      pattern: /Bun\.env/g,
-      replacement: "BunEnv",
-      preamble: 'import { env as BunEnv } from "bunflare:env";',
-    });
-  }
-
-  // KV -> Cloudflare KV
-  if (options.kv) {
-    if (!options.kv.binding.trim()) {
-      throw new Error("[bunflare] options.kv.binding cannot be empty");
+  // 2. KV (bun:kv) -> Cloudflare KV
+  if (options.kv || options.redis) {
+    const binding = options.kv?.binding || options.redis?.binding || "KV";
+    console.log(`  ${pc.gray("↳")} ${pc.green("kv")}     ${pc.gray("shim enabled -> binding:")} ${pc.white(binding)}`);
+    if (options.redis) {
+      console.log(`    ${pc.gray("⚡")} ${pc.yellow("redis bridge active")}`);
     }
     registry.modules.push({
       path: "kv",
-      contents: getKvShim(options.kv.binding),
+      contents: getKvShim(binding),
     });
   }
 
-  // Crypto / Password
+  // 3. R2 (Bun.file / Bun.write) -> Cloudflare R2
+  if (options.r2) {
+    console.log(`  ${pc.gray("↳")} ${pc.blue("r2")}     ${pc.gray("shim enabled -> binding:")} ${pc.white(options.r2.binding)}`);
+    registry.modules.push({
+      path: "r2",
+      contents: getR2Shim(options.r2.binding),
+    });
+    
+    registry.globals.push({
+      pattern: /Bun\.file/g,
+      replacement: "globalThis.Bun.file",
+    });
+    registry.globals.push({
+      pattern: /Bun\.write/g,
+      replacement: "globalThis.Bun.write",
+    });
+  } else {
+    // Default empty R2 shim
+    registry.modules.push({
+      path: "r2",
+      contents: "export const file = () => { throw new Error('R2 not configured'); }; export const write = file;",
+    });
+  }
+
+  // 4. Env (Bun.env) -> Workers env object
+  registry.modules.push({
+    path: "env",
+    contents: getEnvShim(),
+  });
+  registry.globals.push({
+    pattern: /Bun\.env/g,
+    replacement: "globalThis.Bun.env",
+  });
+
+  // 5. Crypto & Password (Bun.password / Bun.hash) -> WebCrypto
   registry.modules.push({
     path: "crypto",
     contents: getCryptoShim(),
   });
 
-  registry.globals.push({
-    pattern: /Bun\.password/g,
-    replacement: "BunCrypto.password",
-    preamble: 'import { BunCrypto } from "bunflare:crypto";',
-  });
-  registry.globals.push({
-    pattern: /Bun\.hash/g,
-    replacement: "BunCrypto.hash",
-    preamble: 'import { BunCrypto } from "bunflare:crypto";',
-  });
-  // Bun.redis -> Upstash
-  if (options.redis) {
-    registry.modules.push({
-      path: "redis",
-      contents: getRedisShim(options.redis.url, options.redis.token),
-    });
-
-    // Replace globals with imports from our virtual module
-    // This is a bit tricky as we'd need to inject an import statement.
-    // For now, let's just replace them with a self-contained initialization
-    // if url/token are provided, or assume they are in env.
-    registry.globals.push({
-      pattern: /Bun\.redis/g,
-      replacement: "(globalThis as unknown as { redis: unknown }).redis",
-    });
-    registry.globals.push({
-      pattern: /Bun\.RedisClient/g,
-      replacement: "RedisClient",
-      preamble: 'import { RedisClient } from "bunflare:redis";',
-    });
-  }
-
-  // Bun.serve -> Cloudflare export default
+  // 6. Serve (Bun.serve) -> Cloudflare Export Default Handler
   registry.modules.push({
     path: "serve",
     contents: getServeShim(),
   });
-  registry.globals.push({
-    pattern: /Bun\.serve/g,
-    replacement: "serve",
-    preamble: 'import { serve } from "bunflare:serve";',
-  });
 
-  // HTML / Static Assets
-  if (options.html) {
-    if (!options.html.entrypoint || !options.html.outdir) {
-      throw new Error("[bunflare] options.html must specify both entrypoint and outdir");
-    }
-    // Note: Actual HTML build is typically handled by the user's build script
-    // but the plugin can provide validation or auto-config in the future.
-    console.log(`[bunflare] HTML assets configured: ${options.html.entrypoint} -> ${options.html.outdir}`);
-    console.log(`[bunflare] Tip: Ensure your wrangler.jsonc has "assets": { "directory": "${options.html.outdir}" }`);
+  // 7. KV fallback if not explicitly enabled
+  if (!registry.modules.find(m => m.path === "kv")) {
+    registry.modules.push({
+      path: "kv",
+      contents: "export const redis = {}; export class RedisClient {};",
+    });
   }
+
+  // 9. Global Bun Object Shim Preamble
+  registry.preamble = `
+    import { redis as _redis, RedisClient as _RedisClient } from "bunflare:kv";
+    import { serve as _serve } from "bunflare:serve";
+    import { file as _file, write as _write } from "bunflare:r2";
+    import { BunCrypto as _crypto } from "bunflare:crypto";
+    import { env as _env } from "bunflare:env";
+
+    if (typeof globalThis.Bun === "undefined") {
+      (globalThis as any).Bun = {
+        redis: _redis,
+        RedisClient: _RedisClient,
+        serve: _serve,
+        file: _file,
+        write: _write,
+        password: _crypto.password,
+        hash: _crypto.hash,
+        env: _env
+      };
+    }
+  `;
+
+  // 8. Frontend Assets (HTML/Static)
+  if (options.frontend) {
+    console.log(`  ${pc.gray("↳")} ${pc.magenta("assets")} ${pc.gray("configured ->")} ${pc.white(options.frontend.entrypoint)}`);
+  }
+}
+
+/**
+ * The core Bunflare plugin for Bun.build.
+ */
+export function bunflare(options: BunflareConfig = {}): BunPlugin {
+  const registry: ShimRegistry = {
+    modules: [],
+    globals: [],
+    preamble: "",
+  };
+
+  initializeRegistry(registry, options);
+
+  return {
+    name: "bunflare",
+    setup(build) {
+      // Resolve virtual modules (bunflare:xxx)
+      build.onResolve({ filter: /^bunflare:/ }, (args) => {
+        const moduleName = args.path.split(":")[1];
+        const shim = registry.modules.find((m) => m.path === moduleName);
+        if (shim) {
+          return { path: args.path, namespace: "bunflare" };
+        }
+        return;
+      });
+
+      // Load virtual module contents
+      build.onLoad({ filter: /.*/, namespace: "bunflare" }, (args) => {
+        const moduleName = args.path.split(":")[1];
+        const shim = registry.modules.find((m) => m.path === moduleName);
+        if (shim) {
+          return { contents: shim.contents, loader: "ts" };
+        }
+        return;
+      });
+
+      // Resolve bun:xxx modules
+      build.onResolve({ filter: /^bun:/ }, (args) => {
+        const moduleName = args.path.split(":")[1];
+        const shim = registry.modules.find((m) => m.path === moduleName);
+        if (shim) {
+          return { path: `bunflare:${moduleName}`, namespace: "bunflare" };
+        }
+        return;
+      });
+
+      // Apply global replacements and preambles to all source files
+      build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, (args) => {
+        if (args.namespace === "bunflare") return;
+        
+        let contents = readFileSync(args.path, "utf8");
+        let modified = false;
+
+        // 1. Inject Preamble if 'Bun' is used (and not already injected)
+        if (contents.includes("Bun") && !contents.includes("bunflare:env")) {
+          contents = registry.preamble + "\n" + contents;
+          modified = true;
+        }
+
+        // 2. Apply global replacements (Bun.env, etc)
+        for (const glob of registry.globals) {
+          // Use a simple string check before doing regex replacement for performance
+          const searchStr = glob.pattern.source.replace(/\\/g, "");
+          if (contents.includes(searchStr)) {
+            contents = contents.replace(glob.pattern, glob.replacement);
+            modified = true;
+          }
+        }
+        
+        if (modified) {
+          return { contents, loader: args.path.endsWith("x") ? "tsx" : "ts" };
+        }
+        return;
+      });
+    },
+  };
 }

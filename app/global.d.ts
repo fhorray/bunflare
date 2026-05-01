@@ -9,7 +9,7 @@
 // Augment the Bun.Env interface to include our Cloudflare bindings.
 // This is how @types/bun recommends customizing the Bun.env type.
 namespace Bun {
-  interface Env extends CloudflareBindings {}
+  interface Env extends CloudflareBindings { }
 }
 
 interface BunflareEnv {
@@ -19,4 +19,23 @@ interface BunflareEnv {
   [key: string]: any;
 }
 
-interface CloudflareBindings extends BunflareEnv {}
+interface CloudflareBindings extends BunflareEnv { }
+
+
+/**
+ * Asset declarations
+ */
+declare module "*.svg" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.png" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.jpg" {
+  const content: string;
+  export default content;
+}

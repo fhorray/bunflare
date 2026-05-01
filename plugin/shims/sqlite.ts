@@ -39,19 +39,25 @@ export class Database {
   private db: D1Database;
   
   constructor(filename: string = ":memory:") {
-    if (filename !== ":memory:") {
-      console.warn(\`[bunflare] bun:sqlite: Database filename "\${filename}" is ignored on Cloudflare D1. Using binding "${bindingName}" instead.\`);
+    const env = (globalThis as unknown as { env: WorkerEnv }).env;
+    const defaultBinding = "${bindingName}";
+
+    // Check if the filename provided is actually the name of a binding
+    if (env && env[filename]) {
+      this.db = env[filename] as D1Database;
+      return;
     }
 
-    // In Workers, we get the binding from the globalThis.env or equivalent
-    // This is injected by Cloudflare at runtime.
-    const env = (globalThis as unknown as { env: WorkerEnv }).env;
-    
-    if (!env || !env["${bindingName}"]) {
-      throw new Error("D1 Binding '${bindingName}' not found in environment. Check your wrangler.toml.");
+    // Fallback to default binding
+    if (!env || !env[defaultBinding]) {
+      throw new Error(\`D1 Binding '\${defaultBinding}' not found in environment. Check your wrangler.jsonc.\`);
     }
     
-    this.db = env["${bindingName}"] as D1Database;
+    if (filename !== ":memory:") {
+      console.warn(\`[bunflare] bun:sqlite: Database filename "\${filename}" not found as a binding. Using default "\${defaultBinding}" instead.\`);
+    }
+
+    this.db = env[defaultBinding] as D1Database;
   }
 
   query(sql: string): Statement {
