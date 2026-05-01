@@ -1,11 +1,18 @@
 {
   "name": "bunflare",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Bunflare plugin for full-stack Cloudflare Workers applications",
   "main": "src/index.ts",
   "bin": {
     "bunflare": "./src/cli/index.ts"
   },
+  "files": [
+    "src/",
+    "assets/",
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "bun build src/index.ts --outdir ./dist"
   },
@@ -16,8 +23,12 @@
   },
   "typesVersions": {
     "*": {
-      "hono": ["./src/hono.ts"],
-      "*": ["./src/*.ts"]
+      "hono": [
+        "./src/hono.ts"
+      ],
+      "*": [
+        "./src/*.ts"
+      ]
     }
   },
   "peerDependencies": {
