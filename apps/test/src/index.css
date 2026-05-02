@@ -1,0 +1,7 @@
+/* Tailwind CSS is loaded via CDN in index.html */
+body {
+  background-color: #fafafa;
+  color: #0f172a;
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

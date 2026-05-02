@@ -1,0 +1,24 @@
+{
+  "name": "test",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bunflare dev",
+    "dev:local": "bunflare dev --local",
+    "build": "bunflare build",
+    "deploy": "bunflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+  },
+  "dependencies": {
+    "hono": "latest",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.13",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "bunflare": "workspace:*",
+    "wrangler": "^4.87.0"
+  }
+}

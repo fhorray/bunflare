@@ -47,6 +47,7 @@ export async function init(isQuiet = false) {
       skipPrompts = true;
     }
   }
+
   if (!skipPrompts) {
     const group = await p.group(
       {
@@ -68,7 +69,7 @@ export async function init(isQuiet = false) {
             options: [
               { value: "blank", label: "Blank (Basic Bun server)", hint: "Minimalist starting point" },
               { value: "hono", label: "Hono (Fullstack)", hint: "Hono framework with HTML frontend" },
-              { value: "react", label: "React", hint: "Fullstack React 19 + Tailwind setup" },
+              { value: "react", label: "React", hint: "Fullstack React 19 setup" },
             ],
           });
         },
@@ -202,7 +203,7 @@ export async function init(isQuiet = false) {
     if (!existsSync(assetPath)) {
       assetPath = join(import.meta.dir, "../assets");
     }
-    
+
     const logoSrc = join(assetPath, "logo.png");
     const faviconSrc = join(assetPath, "favicon.ico");
 
@@ -248,24 +249,12 @@ root.render(<App />);
 `);
 
     // index.css
-    writeFileSync(join(srcDir, "index.css"), `@import "tailwindcss";
-
-@theme {
-  --color-brand-orange: #f97316;
-}
-
-@layer base {
-  body {
-    @apply bg-[#fafafa] text-slate-900 antialiased;
-  }
-}
-
-@layer components {
-  .btn-primary {
-    @apply px-8 py-4 bg-slate-950 text-white font-bold rounded-xl 
-           hover:bg-orange-600 transition-all duration-300 
-           active:scale-[0.98] shadow-sm cursor-pointer;
-  }
+    writeFileSync(join(srcDir, "index.css"), `/* Tailwind CSS is loaded via CDN in index.html */
+body {
+  background-color: #fafafa;
+  color: #0f172a;
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 `);
 
@@ -275,31 +264,33 @@ import logo from "../public/logo.png";
 
 export function App() {
   return (
-    <div className="min-h-screen bg-[#fafafa] relative overflow-hidden flex flex-col items-center">
-      <div className="absolute top-[-10%] right-[-5%] w-[40rem] h-[40rem] bg-orange-100/30 blur-[120px] rounded-full -z-10" />
-      <div className="absolute bottom-[-10%] left-[-5%] w-[35rem] h-[35rem] bg-blue-50/40 blur-[100px] rounded-full -z-10" />
+    <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-8 text-slate-900 antialiased text-center">
+      <div className="mb-8">
+        <img src={logo} width="180" height="180" alt="Bunflare Logo" />
+      </div>
 
-      <main className="max-w-4xl w-full px-6 pt-32 pb-20 flex flex-col items-center text-center">
-        <div className="mb-12">
-          <img src={logo} width="100" height="100" alt="Bunflare Logo" className="opacity-90" />
-        </div>
-
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-slate-900 mb-8 leading-[1.1]">
-          Write <span className="text-orange-600">Bun</span>. <br />
-          Deploy <span className="text-slate-400">Cloudflare</span>.
+      <div className="mb-12">
+        <h1 className="text-7xl font-bold tracking-tighter text-slate-950">
+          bun<span className="text-orange-600">flare</span>
         </h1>
+        <p className="text-slate-500 font-medium tracking-wide">Write Bun, Deploy Cloudflare.</p>
+      </div>
+      
+      <p className="text-slate-400 text-lg font-medium mb-12">
+        Start editing <code className="bg-slate-100 px-3 py-1 rounded-xl text-orange-600 font-mono text-base">src/App.tsx</code>
+      </p>
+      
+      <div className="flex gap-4">
+        <a 
+          href="https://github.com/fhorray/bunflare" 
+          target="_blank" 
+          className="bg-orange-600 text-white font-bold px-10 py-4 rounded-xl hover:bg-orange-700 transition-all duration-300 shadow-sm cursor-pointer"
+        >
+          Documentation
+        </a>
+      </div>
 
-        <p className="max-w-xl text-xl text-slate-500 font-medium mb-12 leading-relaxed">
-          The high-performance bridge between Bun and the edge. Build scalable fullstack apps with zero friction.
-        </p>
-
-        <div className="flex gap-4">
-          <a href="#" className="btn-primary">Get Started</a>
-          <a href="https://github.com/fhorray/bunflare" target="_blank" className="px-8 py-4 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all duration-300 shadow-sm cursor-pointer">Documentation</a>
-        </div>
-      </main>
-
-      <footer className="mt-auto py-12 text-slate-400 text-xs font-bold tracking-[0.2em] uppercase">
+      <footer className="absolute bottom-12 text-slate-400 text-xs font-bold tracking-[0.2em] uppercase">
         Built with 🧡 by Bunflare
       </footer>
     </div>
@@ -340,16 +331,25 @@ import logo from "../public/logo.png";
 function App() {
   return (
     <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-8 text-slate-900 antialiased text-center">
-      <div className="mb-12">
+      <div className="mb-8">
         <img src={logo} width="100" height="100" alt="Bunflare Logo" />
       </div>
-      <h1 className="text-5xl font-bold tracking-tight mb-4">
+      
+      <h1 className="text-6xl font-bold tracking-tighter mb-4 text-slate-950">
         bun<span className="text-orange-600">flare</span>
       </h1>
+      
       <p className="text-slate-500 text-xl font-medium mb-12">
-        Edit <code className="bg-slate-100 px-2 py-1 rounded-lg text-orange-600 font-mono">src/App.tsx</code>
+        Start editing <code className="bg-slate-100 px-3 py-1 rounded-xl text-orange-600 font-mono">src/App.tsx</code>
       </p>
-      <a href="https://github.com/fhorray/bunflare" target="_blank" className="px-8 py-4 bg-slate-950 text-white font-bold rounded-xl">Documentation</a>
+      
+      <a 
+        href="https://github.com/fhorray/bunflare" 
+        target="_blank" 
+        className="bg-orange-600 text-white font-bold px-10 py-4 rounded-xl hover:bg-orange-700 transition-all duration-300 shadow-sm cursor-pointer"
+      >
+        Documentation
+      </a>
     </div>
   );
 }
@@ -460,7 +460,6 @@ declare global {
     if (!isQuiet) p.log.success("Created wrangler.jsonc");
   }
 
-  // .gitignore
   const gitignorePath = join(projectDir, ".gitignore");
   if (!existsSync(gitignorePath)) {
     writeFileSync(gitignorePath, `node_modules
