@@ -1,6 +1,6 @@
 {
   "name": "bunflare",
-  "version": "0.2.19",
+  "version": "0.2.21",
   "description": "Write for Bun. Deploy to Cloudflare. A Bun bundler plugin that automatically replaces Bun-native APIs with Cloudflare Workers equivalents at build time.",
   "author": "fhorray <fhorray@gmail.com>",
   "license": "MIT",
