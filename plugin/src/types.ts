@@ -40,7 +40,7 @@ export interface SQLConfig {
   /** The binding name as declared in wrangler.toml. */
   binding?: string;
   /** The target driver library to use for the shim. */
-  driver?: "postgres" | "pg" | "mysql2";
+  driver?: "postgres" | "mysql2";
   /** Path to a custom implementation file for the Bun.sql shim. */
   custom?: string;
 }
@@ -156,6 +156,19 @@ export interface BunflareConfig extends BunflareOptions {
    * @default "./index.ts"
    */
   entrypoint?: string;
+
+  /**
+   * Development server port.
+   * Used for both 'bunflare dev' (wrangler) and 'bunflare dev --local'.
+   * @default 8787
+   */
+  port?: number;
+
+  /**
+   * Development server IP/Host.
+   * @default "127.0.0.1"
+   */
+  ip?: string;
 }
 
 /**

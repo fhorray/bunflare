@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-orange: #f97316;
+  --color-brand-dark: #0f172a;
+}
+
+@layer base {
+  body {
+    @apply bg-[#fafafa] text-slate-900 selection:bg-orange-100 selection:text-orange-900 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white border border-slate-200/60 shadow-sm;
+  }
+  
+  .btn-primary {
+    @apply px-8 py-4 bg-slate-950 text-white font-bold rounded-xl 
+           hover:bg-orange-600 transition-all duration-300 
+           active:scale-[0.98] shadow-sm hover:shadow-orange-200 cursor-pointer;
+  }
+
+  .input-field {
+    @apply w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl 
+           focus:bg-white focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/5 
+           outline-none transition-all duration-200 placeholder:text-slate-400 font-medium;
+  }
+}
+
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-bounce-subtle {
+  animation: bounce-subtle 3s ease-in-out infinite;
+}

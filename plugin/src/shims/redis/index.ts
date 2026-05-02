@@ -7,11 +7,17 @@ import { join } from "path";
  */
 export function getRedisShim(bindingName: string): string {
   // Logic is now in the same folder as logic.ts
-  const logicPath = join(import.meta.dir, "logic.ts");
-  
+  let logicPath = join(import.meta.dir, "logic.ts");
+
   try {
-    let content = readFileSync(logicPath, "utf-8");
-    
+    let content = "";
+    try {
+      content = readFileSync(logicPath, "utf-8");
+    } catch (e) {
+      logicPath = join(import.meta.dir, "..", "..", "src", "shims", "redis", "logic.ts");
+      content = readFileSync(logicPath, "utf-8");
+    }
+
     // Replace the default fallbacks with the actual binding name discovered
     content = content.replace(/binding \|\| "KV"/g, `binding || "${bindingName}"`);
     content = content.replace(/name \|\| "KV"/g, `name || "${bindingName}"`);
@@ -23,7 +29,7 @@ interface KVNamespace {
   delete(key: string): Promise<void>;
 }
 `;
-    
+
     return interfaceDef + "\n" + content;
   } catch (err) {
     console.error(`[bunflare] Failed to read logic.ts at ${logicPath}. Error: ${err}`);

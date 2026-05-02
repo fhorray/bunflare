@@ -33,10 +33,10 @@ interface ShimRegistry {
 /**
  * Populates the registry with shim contents and global patterns based on user options.
  */
-function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): void {
+function initializeRegistry(registry: ShimRegistry, options: BunflareOptions, isSilent = false): void {
   // 1. SQLite (bun:sqlite) -> Cloudflare D1
   if (options.sqlite) {
-    console.log(`  ${pc.gray("↳")} ${pc.cyan("sqlite")} ${pc.gray("shim enabled -> D1:")} ${pc.white(options.sqlite.binding)}`);
+    if (!isSilent) console.log(`  ${pc.gray("↳")} ${pc.cyan("sqlite")} ${pc.gray("shim enabled -> D1:")} ${pc.white(options.sqlite.binding)}`);
     registry.modules.push({
       path: "sqlite",
       contents: getD1DatabaseShim(options.sqlite.binding),
@@ -48,7 +48,7 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
   const sqlBinding = sqlConfig?.binding || options.sqlite?.binding;
 
   if (sqlConfig?.custom) {
-    console.log(`  ${pc.gray("↳")} ${pc.blue("sql")}    ${pc.gray("shim enabled ->")} ${pc.yellow("Custom Shim")}${pc.gray(":")} ${pc.white(sqlConfig.custom)}`);
+    if (!isSilent) console.log(`  ${pc.gray("↳")} ${pc.blue("sql")}    ${pc.gray("shim enabled ->")} ${pc.yellow("Custom Shim")}${pc.gray(":")} ${pc.white(sqlConfig.custom)}`);
     const customPath = join(process.cwd(), sqlConfig.custom);
     registry.modules.push({
       path: "sql",
@@ -59,7 +59,7 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
     const driver = sqlConfig?.driver || "postgres";
     const typeLabel = isHyperdrive ? `Hyperdrive (${driver})` : "D1";
 
-    console.log(`  ${pc.gray("↳")} ${pc.blue("sql")}    ${pc.gray("shim enabled ->")} ${pc.cyan(typeLabel)}${pc.gray(":")} ${pc.white(sqlBinding)}`);
+    if (!isSilent) console.log(`  ${pc.gray("↳")} ${pc.blue("sql")}    ${pc.gray("shim enabled ->")} ${pc.cyan(typeLabel)}${pc.gray(":")} ${pc.white(sqlBinding)}`);
 
     if (isHyperdrive) {
       try {
@@ -83,7 +83,7 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
   // 2. Redis Bridge -> Cloudflare KV
   if (options.redis) {
     const binding = options.redis.binding || "KV";
-    console.log(`  ${pc.gray("↳")} ${pc.yellow("redis")}   ${pc.gray("bridge enabled -> binding:")} ${pc.white(binding)}`);
+    if (!isSilent) console.log(`  ${pc.gray("↳")} ${pc.yellow("redis")}   ${pc.gray("bridge enabled -> binding:")} ${pc.white(binding)}`);
     registry.modules.push({
       path: "redis",
       contents: getRedisShim(binding),
@@ -92,7 +92,7 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
 
   // 3. R2 (Bun.file / Bun.write) -> Cloudflare R2
   if (options.r2) {
-    console.log(`  ${pc.gray("↳")} ${pc.blue("r2")}     ${pc.gray("shim enabled -> binding:")} ${pc.white(options.r2.binding)}`);
+    if (!isSilent) console.log(`  ${pc.gray("↳")} ${pc.blue("r2")}     ${pc.gray("shim enabled -> binding:")} ${pc.white(options.r2.binding)}`);
     registry.modules.push({
       path: "r2",
       contents: getR2Shim(options.r2.binding),
@@ -207,21 +207,21 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions): v
 
   // 8. Frontend Assets (HTML/Static)
   if (options.frontend) {
-    console.log(`  ${pc.gray("↳")} ${pc.magenta("assets")} ${pc.gray("configured ->")} ${pc.white(options.frontend.entrypoint)}`);
+    if (!isSilent) console.log(`  ${pc.gray("↳")} ${pc.magenta("assets")}   ${pc.gray("configured ->")} ${pc.white(options.frontend.entrypoint)}`);
   }
 }
 
 /**
  * The core Bunflare plugin for Bun.build.
  */
-export function bunflare(options: BunflareConfig = {}): BunPlugin {
+export function bunflare(options: BunflareConfig = {}, isSilent = false): BunPlugin {
   const registry: ShimRegistry = {
     modules: [],
     globals: [],
     preamble: "",
   };
 
-  initializeRegistry(registry, options);
+  initializeRegistry(registry, options, isSilent);
 
   return {
     name: "bunflare",
@@ -229,12 +229,14 @@ export function bunflare(options: BunflareConfig = {}): BunPlugin {
       // 1. Resolve virtual modules and mark drivers as external
       const nodeBuiltins = /^(node:.*|assert|buffer|console|crypto|dns|events|fs|http|http2|https|module|net|os|path|perf_hooks|process|querystring|readline|stream|string_decoder|timers|tls|trace_events|tty|url|util|v8|vm|zlib)$/;
       build.onResolve({ filter: nodeBuiltins }, (args) => {
-        return { path: args.path, external: true };
+        // Ensure 'node:' prefix for better Workers compatibility
+        const path = args.path.startsWith("node:") ? args.path : `node:${args.path}`;
+        return { path, external: true };
       });
 
-      build.onResolve({ filter: /^(bun|bun:.*|bunflare:.*|postgres|pg|mysql2)$/ }, (args) => {
+      build.onResolve({ filter: /^(bun|bun:.*|bunflare:.*|postgres|mysql2)$/ }, (args) => {
         // Handle database drivers (explicitly resolve and normalize for Windows)
-        if (/^(postgres|pg|mysql2)$/.test(args.path)) {
+        if (/^(postgres|mysql2)$/.test(args.path)) {
           try {
             const resolved = Bun.resolveSync(args.path, args.resolveDir);
             return { path: resolved.replace(/\\/g, "/") };

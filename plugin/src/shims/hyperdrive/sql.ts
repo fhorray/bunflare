@@ -1,21 +1,78 @@
-import { readFileSync } from "fs";
-import { join } from "path";
-
 /**
  * Generates the shim string for Hyperdrive SQL support.
  */
-export function getHyperdriveSqlShim(bindingName: string, driver: "postgres" | "pg" | "mysql2" = "postgres"): string {
-  const logicPath = join(import.meta.dir, "logic.ts");
-  let logic = readFileSync(logicPath, "utf8");
+export function getHyperdriveSqlShim(bindingName: string, driver: "postgres" | "mysql2" = "postgres"): string {
+  
+  // Logic is inlined to avoid file resolution issues in bundled environments
+  let logic = `
+interface PostgresClient {
+  (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
+  unsafe(query: string): Promise<unknown>;
+  end(): Promise<void>;
+}
 
-  // Prevent esbuild from trying to bundle the driver we aren't using.
-  // Because logic.ts contains dynamic imports for both, esbuild tries to resolve both.
-  // We hide the literal string from static analysis by replacing it.
-  if (driver === "postgres") {
-    logic = logic.replace(/await import\("pg"\)/g, "undefined /* ignored pg */");
-  } else if (driver === "pg") {
-    logic = logic.replace(/await import\("postgres"\)/g, "undefined /* ignored postgres */");
+function createSQL(bindingName, driver = "postgres") {
+
+  async function executeQuery(queryFn) {
+    const global = globalThis;
+    const env = global.__BUNFLARE_TEST_ENV__ || global.Bun?.env;
+    const hyperdrive = env?.[bindingName];
+
+    if (!hyperdrive || !hyperdrive.connectionString) {
+      throw new Error(\`[bunflare] Hyperdrive binding "\${bindingName}" not found in Bun.env\`);
+    }
+
+    if (driver === "postgres") {
+      const importFn = new Function("m", "return import(m)");
+      const { default: postgres } = await importFn("postgres");
+      const client = postgres(hyperdrive.connectionString, {
+        max: 1,
+        onnotice: () => { }
+      });
+      try {
+        return await queryFn(client);
+      } finally {
+        await client.end();
+      }
+    } else {
+      throw new Error(\`[bunflare] Driver "\${driver}" for Hyperdrive is not yet implemented in Bun.sql shim.\`);
+    }
   }
+
+  function sql(strings, ...values) {
+    const execute = async () => {
+      return executeQuery(async (client) => {
+        if (driver === "postgres") {
+          return await client(strings, ...values);
+        }
+      });
+    };
+
+    const promise = execute();
+
+    return {
+      then: promise.then.bind(promise),
+      catch: promise.catch.bind(promise),
+      finally: promise.finally.bind(promise),
+      async values() {
+        const results = await promise;
+        if (!results || results.length === 0) return [];
+        const keys = Object.keys(results[0]);
+        return results.map(row => keys.map(k => row[k]));
+      }
+    };
+  }
+
+  const unsafe = async (str) => {
+    return executeQuery(async (client) => {
+      if (driver === "postgres") return await client.unsafe(str);
+    });
+  };
+
+  sql.unsafe = unsafe;
+  return sql;
+}
+`;
 
   return `
 /**

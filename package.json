@@ -3,7 +3,7 @@
   "private": true,
   "workspaces": [
     "plugin",
-    "app"
+    "apps/*"
   ],
   "scripts": {
     "publish": "bun run scripts/publish.ts"

@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hono-playground",
+  "main": "dist/index.js",
+  "compatibility_date": "2026-05-02",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "dist/public"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "placeholder-id",
+      "localConnectionString": "postgres://postgres:postgres@localhost:5433/postgres"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "placeholder-id"
+    }
+  ]
+}

@@ -27,20 +27,38 @@
     "url": "https://github.com/fhorray/bunflare/issues"
   },
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
   "bin": {
-    "bunflare": "dist/cli/index.js"
+    "bunflare": "src/cli/index.ts"
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     },
     "./hono": {
-      "types": "./dist/hono.d.ts",
-      "import": "./dist/hono.js"
+      "import": "./src/hono.ts",
+      "types": "./src/hono.ts"
+    }
+  },
+  "publishConfig": {
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "bin": {
+      "bunflare": "dist/cli/index.js"
+    },
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./hono": {
+        "types": "./dist/hono.d.ts",
+        "import": "./dist/hono.js"
+      }
     }
   },
   "files": [

@@ -6,6 +6,7 @@ import { watch } from "fs";
 import { bunflare } from "../index.ts";
 import type { BunflareConfig, BunflareOptions } from "../types.ts";
 import pc from "picocolors";
+import type { BuildOutput } from "bun";
 
 /**
  * Loads the bunflare.config.ts file from the current directory.
@@ -53,7 +54,7 @@ function discoverBindings(): Partial<BunflareOptions> {
 /**
  * Orchestrates the build process for both Worker and Frontend.
  */
-async function runBuild(isDev = false, isRebuild = false) {
+async function runBuild(isDev = false, isRebuild = false, only?: "frontend" | "backend") {
   const userConfig = await loadConfig() || {};
   const discovered = discoverBindings();
 
@@ -106,61 +107,79 @@ async function runBuild(isDev = false, isRebuild = false) {
   try {
     if (!isRebuild) process.stdout.write(`${pc.cyan("🚀 building fullstack app...")}\n`);
 
-    const workerResult = await Bun.build({
-      entrypoints: [config.entrypoint || "./index.ts"],
-      outdir: "./dist",
-      target: "browser",
-      format: "esm",
-      minify: !isDev,
-      loader: {
-        ".html": "text",
-        ".svg": "text",
-        ".png": "file",
-        ...(config.loader || {}),
-      },
-      plugins: [bunflare(config), ...(config.plugins || [])],
-    });
+    const builds: Promise<any>[] = [];
 
-    if (!workerResult.success) {
-      console.error(`${pc.red("✖ backend build failed")}`);
-      workerResult.logs.forEach(log => console.error(log));
-      return false;
+    // 1. Backend Build
+    if (!only || only === "backend") {
+      builds.push(Bun.build({
+        entrypoints: [config.entrypoint || "./index.ts"],
+        outdir: "./dist",
+        target: "browser",
+        format: "esm",
+        minify: !isDev,
+        external: [
+          "node:*",
+          "events", "stream", "buffer", "util", "path", "fs", "crypto", "net", "tls", "os", "http", "https", "zlib",
+        ],
+        loader: {
+          ".html": "text",
+          ".svg": "text",
+          ".png": "file",
+          ...(config.loader || {}),
+        },
+        plugins: [bunflare(config, isRebuild), ...(config.plugins || [])],
+      }));
+    } else {
+      builds.push(Promise.resolve({ success: true }));
     }
 
-    let frontendSuccess = true;
-    if (config.frontend) {
-      const frontendResult = await Bun.build({
+    // 2. Frontend Build
+    if (config.frontend && (!only || only === "frontend")) {
+      builds.push(Bun.build({
         entrypoints: [config.frontend.entrypoint || "./public/index.html"],
         outdir: config.frontend.outdir || "./dist/public",
         target: "browser",
         minify: !isDev,
         plugins: config.frontend.plugins || config.plugins || [],
         loader: config.frontend.loader || {},
-      });
-
-      if (!frontendResult.success) {
-        console.error(`${pc.red("✖ frontend build failed")}`);
-        frontendResult.logs.forEach(log => console.error(log));
-        frontendSuccess = false;
-      }
+      }));
+    } else {
+      builds.push(Promise.resolve({ success: true }));
     }
 
-    if (workerResult.success && frontendSuccess) {
-      // Ensure dist/public exists to avoid Wrangler errors even if no frontend is built
-      const publicDir = join(process.cwd(), "dist", "public");
-      if (!existsSync(publicDir)) {
-        mkdirSync(publicDir, { recursive: true });
-      }
+    const [workerResult, frontendResult] = (await Promise.all(builds)) as BuildOutput[];
 
-      const time = new Date().toLocaleTimeString();
-      if (isRebuild) {
-        process.stdout.write(`${pc.green("✓")} ${pc.gray(`rebuild successful at ${time}`)}\n`);
-      } else {
-        console.log(`${pc.green("✓")} ${pc.bold("build successful")} ${pc.gray(`at ${time}`)}`);
-      }
-      return true;
+    if (!workerResult || !frontendResult) {
+      console.error(`${pc.red("✖ build failed")} workerResult: ${JSON.stringify(workerResult)} frontendResult: ${JSON.stringify(frontendResult)}`);
+      return false;
     }
-    return false;
+
+    if (!workerResult.success) {
+      console.error(`${pc.red("✖ backend build failed")}`);
+      workerResult.logs.forEach((log: BuildOutput['logs'][number]) => console.error(log));
+      return false;
+    }
+
+    if (frontendResult && !frontendResult.success) {
+      console.error(`${pc.red("✖ frontend build failed")}`);
+      frontendResult.logs.forEach((log: BuildOutput['logs'][number]) => console.error(log));
+      return false;
+    }
+
+    // Ensure dist/public exists
+    const publicDir = join(process.cwd(), "dist", "public");
+    if (!existsSync(publicDir)) {
+      mkdirSync(publicDir, { recursive: true });
+    }
+
+    const time = new Date().toLocaleTimeString();
+    if (isRebuild) {
+      const typeLabel = only ? `${only} ` : "";
+      process.stdout.write(`\n${pc.green("✓")} ${pc.gray(`${typeLabel}rebuild successful at ${time}`)}\n`);
+    } else {
+      console.log(`${pc.green("✓")} ${pc.bold("build successful")} ${pc.gray(`at ${time}`)}`);
+    }
+    return true;
   } catch (err) {
     console.error(err);
     process.stderr.write(`${pc.red("crashed:")} ${err instanceof Error ? err.message : String(err)}\n`);
@@ -191,6 +210,32 @@ function runWrangler(wranglerArgs: string[]) {
   });
 }
 
+// Live Reload Server
+let reloadServer: any = null;
+function startReloadServer(port: number) {
+  try {
+    reloadServer = Bun.serve({
+      port,
+      fetch(req, server) {
+        if (server.upgrade(req)) return;
+        return new Response("Bunflare Reload Server");
+      },
+      websocket: {
+        message() { },
+        open(ws) {
+          ws.subscribe("reload");
+        }
+      }
+    });
+  } catch (e) { }
+}
+
+function notifyReload() {
+  if (reloadServer) {
+    reloadServer.publish("reload", "refresh");
+  }
+}
+
 import { init } from "./init.ts";
 
 // CLI Logic
@@ -198,36 +243,25 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 if (command === "init") {
-  await init();
+  const isQuiet = args.includes("-y") || args.includes("--yes");
+  await init(isQuiet);
 } else if (args.includes("dev")) {
   const isLocal = args.includes("--local");
   if (isLocal) {
     console.log(`${pc.cyan("🚀 starting bunflare in local-only mode...")}`);
-    const config = await loadConfig();
-    const entrypoint = config?.entrypoint || "./index.ts";
-    const child = spawn("bun", ["--hot", entrypoint], { stdio: "inherit" });
 
-    child.on("exit", (code) => {
-      process.exit(code ?? 0);
-    });
+    runBuild(true).then(async (success) => {
+      if (!success) process.exit(1);
 
-    const cleanup = () => {
-      child.kill();
-      process.exit(0);
-    };
+      const config = await loadConfig();
+      const entrypoint = config?.entrypoint || "./index.ts";
+      const port = config?.port || 8787;
+      const ip = config?.ip || "127.0.0.1";
+      const reloadPort = port + 1001;
 
-    process.on("SIGINT", cleanup);
-    process.on("SIGTERM", cleanup);
-  } else {
-    console.log(`${pc.yellow("🚀 starting bunflare dev mode...")}`);
+      startReloadServer(reloadPort);
 
-    // 1. Initial Build
-    runBuild(true).then((success) => {
-      if (!success) {
-        process.exit(1);
-      }
-
-      // 2. Start Watcher
+      // 1. Start Watcher for Local Mode
       let debounceTimer: NodeJS.Timeout;
       const watcher = watch(process.cwd(), { recursive: true }, (event, filename) => {
         if (!filename) return;
@@ -242,12 +276,107 @@ if (command === "init") {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
           process.stdout.write(`${pc.yellow("↻")} ${pc.gray(`change in ${normalized}, rebuilding... `)}`);
-          await runBuild(true, true);
+          const success = await runBuild(true, true);
+          if (success) notifyReload();
         }, 150);
       });
 
-      // 3. Start Wrangler (Pure mode, no build-command)
-      const wranglerArgs = ["dev", "--live-reload", ...args.slice(1)];
+      // 2. Spawn Bun with Hot Reload pointing to the SOURCE file
+      const child = spawn("bun", ["--hot", entrypoint], {
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          PORT: port.toString(),
+          HOST: ip,
+          BUNFLARE_RELOAD_PORT: reloadPort.toString()
+        }
+      });
+
+      const cleanup = () => {
+        watcher.close();
+        child.kill();
+        process.exit(0);
+      };
+
+      process.on("SIGINT", cleanup);
+      process.on("SIGTERM", cleanup);
+
+      child.on("exit", (code) => {
+        watcher.close();
+        process.exit(code ?? 0);
+      });
+    });
+  } else {
+    console.log(`${pc.yellow("🚀 starting bunflare dev mode...")}`);
+
+    // 1. Initial Build
+    runBuild(true).then(async (success) => {
+      if (!success) {
+        process.exit(1);
+      }
+
+      const config = await loadConfig();
+      const port = config?.port || 8787;
+      const ip = config?.ip || "127.0.0.1";
+
+      // 2. Start Watcher
+      let debounceTimer: NodeJS.Timeout;
+      let isBuilding = false;
+      const mtimeCache = new Map<string, number>();
+
+      const watcher = watch(process.cwd(), { recursive: true }, async (event, filename) => {
+        if (!filename) return;
+        const fullPath = join(process.cwd(), filename);
+        const normalized = filename.replace(/\\/g, "/");
+        
+        if (
+          normalized.startsWith("dist") ||
+          normalized.startsWith(".wrangler") ||
+          normalized.includes("node_modules") ||
+          normalized.startsWith(".git")
+        ) return;
+
+        // Verify if file actually changed on disk
+        try {
+          const stats = (await import("fs")).statSync(fullPath);
+          const lastMtime = mtimeCache.get(normalized) || 0;
+          if (stats.mtimeMs <= lastMtime) return;
+          mtimeCache.set(normalized, stats.mtimeMs);
+        } catch (e) {
+          // File might have been deleted, that's a change too
+        }
+
+        if (isBuilding) return;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          if (isBuilding) return;
+          isBuilding = true;
+          
+          try {
+            process.stdout.write(`\n${pc.yellow("↻")} ${pc.gray(`change in ${normalized}, rebuilding... `)}`);
+
+            let only: "frontend" | "backend" | undefined = undefined;
+            if (normalized.includes("/public/") || normalized.endsWith(".tsx") || normalized.endsWith(".jsx") || normalized.endsWith(".css")) {
+              only = "frontend";
+            } else if (normalized.endsWith(".ts") || normalized.endsWith(".js")) {
+              only = "backend";
+            }
+
+            const success = await runBuild(true, true, only);
+            if (success && only === "frontend") {
+              notifyReload();
+            }
+          } finally {
+            // Give a small buffer after build finishes before allowing the next one
+            setTimeout(() => { isBuilding = false; }, 200);
+          }
+        }, 150);
+      });
+
+      // 3. Start Wrangler
+      const filteredArgs = args.filter(a => a !== "dev" && a !== "--local");
+      const wranglerArgs = ["dev", "--live-reload", "--port", port.toString(), "--ip", ip, ...filteredArgs];
       const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
       const child = spawn(command, wranglerArgs, {
         stdio: "inherit",

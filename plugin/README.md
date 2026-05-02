@@ -448,11 +448,8 @@ This will output a Hyperdrive `id` — copy it.
 **2. Install your chosen PostgreSQL driver:**
 
 ```bash
-# Option A — postgres.js (recommended)
+# Recommended: postgres.js
 bun add postgres
-
-# Option B — node-postgres (pg)
-bun add pg && bun add -d @types/pg
 ```
 
 **3. Configure `bunflare.config.ts`:**
@@ -465,7 +462,7 @@ export default {
   sql: {
     type: "hyperdrive",              // Use Hyperdrive backend for Bun.sql
     binding: "HYPERDRIVE",           // Must match the binding name in wrangler.jsonc
-    driver: "postgres",              // "postgres" | "pg"
+    driver: "postgres",              // Recommended: "postgres"
   },
 } satisfies BunflareConfig;
 ```
@@ -499,9 +496,8 @@ Bunflare is **library-agnostic** — you pick the driver, Bunflare adapts. The `
 | `driver` value | Library | Install command | Notes |
 |---|---|---|---|
 | `"postgres"` *(default)* | [postgres.js](https://github.com/porsager/postgres) | `bun add postgres` | Ships a dedicated Cloudflare Workers build (`/cf/`) |
-| `"pg"` | [node-postgres](https://node-postgres.com/) | `bun add pg` | Bunflare translates templates to `$1, $2` syntax internally |
 
-> **💡 Recommendation:** Use `postgres.js`. It has first-class Cloudflare Workers support and is significantly more performant. Use `pg` only if you are migrating an existing codebase that already depends on it.
+> **💡 Recommendation:** Use `postgres.js`. It has first-class Cloudflare Workers support and is significantly more performant.
 
 #### Local Development with Docker
 
@@ -562,7 +558,7 @@ Your shim file must export a `sql` tagged-template function compatible with the 
 | **Latency** | Ultra-low (edge-native) | Low (pooled + cached by Hyperdrive) |
 | **Best for** | Sessions, flags, small tables | Complex queries, existing Postgres DBs |
 | **wrangler.jsonc key** | `d1_databases` | `hyperdrive` |
-| **Extra dependency** | None | `postgres` or `pg` |
+| **Extra dependency** | None | `postgres` |
 
 ---
 
@@ -571,33 +567,51 @@ Your shim file must export a `sql` tagged-template function compatible with the 
 
 ### 🛠️ Frameworks: Hono 
 
-Bunflare has first-class support for **Hono**. We provide a universal `serveStatic` adapter that works in both Bun (local dev) and Cloudflare Workers (production) without changing any code.
+Bunflare has first-class support for **Hono**. We provide universal middleware that works in both Bun (local dev) and Cloudflare Workers (production) without changing any code.
 
-#### 1. Setup
+#### 1. `spa()` Middleware (Recommended)
 
-```bash
-bun add hono
-```
-
-#### 2. Entrypoint Pattern
-
-For Hono apps, we recommend a **hybrid export** pattern. This allows Bun's native router to handle the frontend (with automatic transpilation) while Hono handles your API.
+The `spa()` middleware is the easiest way to build fullstack applications. It automatically handles:
+- **Static Assets**: Serves files from `dist/public` (JS, CSS, images).
+- **API Protection**: Automatically ignores routes that match your API prefixes.
+- **Smart Fallback**: Serves your `index.html` for any navigation route (essential for client-side routers like TanStack Router or React Router).
 
 ```ts
 // src/index.ts
 import { Hono } from "hono";
-import { serveStatic } from "bunflare/hono";
-import indexHtml from "../public/index.html";
+import { spa } from "bunflare/hono";
 
 const app = new Hono();
 
-// Universal static middleware:
+// 1. Your API routes
+app.get("/api/hello", (c) => c.json({ message: "Hello!" }));
+
+// 2. SPA Middleware (Static files + Smart Fallback)
+// Put this at the end of your routes
+app.use("*", spa({
+  apiPrefix: ["/api/", "/auth/"] // Optional: prefixes to ignore
+}));
+
+export default app;
+```
+
+#### 2. `serveStatic()` Middleware
+
+If you need more granular control over your static files without the SPA fallback logic, use `serveStatic`.
+
+```ts
+import { serveStatic } from "bunflare/hono";
+
 // - Dev: Serves from ./public via hono/bun
 // - Prod: Passes through to Cloudflare ASSETS
-app.use("*", serveStatic({ root: "./public" }));
+app.use("/assets/*", serveStatic({ root: "./public" }));
+```
 
-app.get("/api/hello", (c) => c.json({ message: "Hello from Hono!" }));
+#### 3. Entrypoint Pattern (Hybrid Export)
 
+For the best DX in local development, you can also use a hybrid export pattern:
+
+```ts
 export default {
   fetch: app.fetch,
   routes: {
@@ -608,6 +622,7 @@ export default {
 
 **Why the hybrid export?** 
 In `dev:local`, Hono doesn't know how to transpile `.tsx` files. By putting `indexHtml` in the `routes` property, you hand off the HTML serving to Bun's native router, which handles all the on-the-fly bundling magic for you.
+
 
 ### `import { redis } from "bun"` → Redis-over-KV Bridge ⚡
 
