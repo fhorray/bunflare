@@ -79,7 +79,12 @@ export default {
   frontend: {
     entrypoint: "./public/index.html",
     outdir: "./dist/public",
-  }
+    // Optional: Custom loaders for frontend (e.g. for .wasm or .data)
+    loader: { ".wasm": "file" }
+  },
+  
+  // Optional: Custom loaders for backend
+  loader: { ".txt": "text" }
 } satisfies BunflareConfig;
 ```
 
@@ -91,14 +96,18 @@ To get full type safety for `Bun.env` and Cloudflare bindings, you need a `globa
 
 ```ts
 // global.d.ts
-namespace Bun {
-  // Merges Cloudflare Bindings into the global Bun.env object
-  interface Env extends CloudflareBindings { }
+import "bun";
+
+declare global {
+  namespace Bun {
+    // Merges Cloudflare Bindings into the global Bun.env object
+    interface Env extends CloudflareBindings { }
+  }
 }
 
 // This interface is automatically populated by 'wrangler types'
 // into worker-configuration.d.ts
-interface CloudflareBindings extends BunflareEnv { }
+interface CloudflareBindings { }
 
 interface BunflareEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -472,6 +481,47 @@ Your shim file must export a `sql` tagged-template function compatible with the 
 ---
 
 
+---
+
+### 🛠️ Frameworks: Hono 
+
+Bunflare has first-class support for **Hono**. We provide a universal `serveStatic` adapter that works in both Bun (local dev) and Cloudflare Workers (production) without changing any code.
+
+#### 1. Setup
+
+```bash
+bun add hono
+```
+
+#### 2. Entrypoint Pattern
+
+For Hono apps, we recommend a **hybrid export** pattern. This allows Bun's native router to handle the frontend (with automatic transpilation) while Hono handles your API.
+
+```ts
+// src/index.ts
+import { Hono } from "hono";
+import { serveStatic } from "bunflare/hono";
+import indexHtml from "../public/index.html";
+
+const app = new Hono();
+
+// Universal static middleware:
+// - Dev: Serves from ./public via hono/bun
+// - Prod: Passes through to Cloudflare ASSETS
+app.use("*", serveStatic({ root: "./public" }));
+
+app.get("/api/hello", (c) => c.json({ message: "Hello from Hono!" }));
+
+export default {
+  fetch: app.fetch,
+  routes: {
+    "/": indexHtml // Bun handles the root and transpiles React automatically
+  }
+};
+```
+
+**Why the hybrid export?** 
+In `dev:local`, Hono doesn't know how to transpile `.tsx` files. By putting `indexHtml` in the `routes` property, you hand off the HTML serving to Bun's native router, which handles all the on-the-fly bundling magic for you.
 
 ### `import { redis } from "bun"` → Redis-over-KV Bridge ⚡
 
@@ -576,6 +626,17 @@ const isDev  = Bun.env.NODE_ENV === "development";
 ## 🛠️ CLI Reference
 
 The `bunflare` CLI is the heart of your development workflow.
+
+### `bunflare init`
+
+Scaffolds a new Bunflare project. Supports multiple templates:
+- `react` (Default): Fullstack React 19 + Bun.serve
+- `hono`: Fullstack Hono + React 19
+- `none`: Minimal Worker setup
+
+```bash
+bunx bunflare init my-app --template hono
+```
 
 ### `bunflare dev`
 
