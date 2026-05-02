@@ -14,7 +14,7 @@ describe("Drizzle Bunflare Adapter", () => {
     const mockClient: any = { // Partial mock
       unsafe: mock((sql: string, params: unknown[]) => ({
         values: mockValues,
-        run: mock(async () => {})
+        run: mock(async () => { })
       }))
     };
 
@@ -27,7 +27,7 @@ describe("Drizzle Bunflare Adapter", () => {
   });
 
   test("should handle insert (.run())", async () => {
-    const mockRun = mock(async () => {});
+    const mockRun = mock(async () => { });
     const mockClient: any = {
       unsafe: mock((sql: string, params: unknown[]) => ({
         values: mock(async () => []),
@@ -50,7 +50,7 @@ describe("Drizzle Bunflare Adapter", () => {
     const mockClient: any = {
       unsafe: mock((sql: string, params: unknown[]) => ({
         values: mockValues,
-        run: mock(async () => {})
+        run: mock(async () => { })
       }))
     };
 

@@ -41,14 +41,13 @@ No runtime overhead. No vendor lock-in. Just write Bun, deploy Cloudflare.
 | Bun API | Cloudflare Equivalent | Status |
 |---|---|---|
 | `Bun.env` | Worker `env` bindings | ✅ Done |
-| `Bun.sql` (tagged template) | Cloudflare **D1** or **Hyperdrive** | ✅ Done |
-| `bun:sqlite` / `new Database()` | Cloudflare **D1** (Legacy API) | ✅ Done |
+| `bun:sqlite` / `new Database()` | Cloudflare **D1** | ✅ Done |
+| `Bun.sql` (tagged template) | Cloudflare **Hyperdrive** + any Postgres driver | ✅ Done |
 | `import { redis } from "bun"` | Cloudflare **KV** (Redis-over-KV bridge) | ✅ Done |
 | `Bun.password.hash/verify` | **WebCrypto** (PBKDF2) | ✅ Done |
 | `Bun.hash()` | **WebCrypto** (SHA-256) | ✅ Done |
 | `Bun.file()` / `Bun.write()` | Cloudflare **R2** | ✅ Done |
 | `Bun.serve()` + `routes` | Cloudflare **Worker fetch handler** | ✅ Done |
-| `bunflare/drizzle` | **Drizzle ORM** (Universal Adapter) | ✅ Done |
 | Fullstack HTML/SPA Build | Cloudflare **Workers Assets** | ✅ Done |
 
 ---
@@ -180,52 +179,27 @@ bun run cf-typegen  # bunx wrangler types --env-interface CloudflareBindings
 ### 6. Write your Worker like you're writing Bun
 
 > [!IMPORTANT]
-> **Universal SQL Pattern:** We recommend using `Bun.sql` instead of `bun:sqlite` whenever possible. It works identically on local Bun (SQLite) and production Cloudflare (D1 or Hyperdrive), ensuring your code is truly universal.
+> **Export Default Requirement:** Cloudflare Workers require your application to be exported as an ES module default export. Whether you use `export default Bun.serve(...)` directly or assign it to a variable (`const server = ...; export default server;`), this export is strictly required.
 
 ```ts
 // src/index.ts
+import { Database } from "bun:sqlite";
 import { redis } from "bun";
 
 export default Bun.serve({
   routes: {
     "/api/hello": async (req) => {
-      // Bun.sql → D1 (or Hyperdrive) at deploy time
-      const users = await Bun.sql`SELECT * FROM users LIMIT 10`;
+      // bun:sqlite → D1 at deploy time
+      const db = new Database("DB");
 
       // import { redis } from "bun" → Cloudflare KV at deploy time
-      await redis.set("last_query", new Date().toISOString());
+      await redis.set("greeting", "Hello from Cloudflare!");
+      const greeting = await redis.get("greeting");
 
-      return Response.json({ users, status: "success" });
+      return Response.json({ greeting });
     }
-  }
-});
-```
-
----
-
-## 🌩️ Drizzle ORM (Universal)
-
-Bunflare provides a first-class, zero-boilerplate adapter for **Drizzle ORM**. It handles all the underlying complexity of D1/Hyperdrive proxying, batching, and type serialization automatically.
-
-```ts
-import { drizzle } from "bunflare/drizzle";
-import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
-
-// 1. Define your schema using sqlite-core (works for D1 too!)
-export const users = sqliteTable("users", {
-  id: integer("id").primaryKey(),
-  name: text("name").notNull(),
-});
-
-// 2. Initialize the universal database
-export const db = drizzle({ schema: { users } });
-
-// 3. Use it anywhere (Local Bun or Cloudflare Workers)
-export default Bun.serve({
-  async fetch(req) {
-    const allUsers = await db.select().from(users);
-    return Response.json(allUsers);
-  }
+  },
+  development: true // enables live-reload in dev mode
 });
 ```
 
@@ -474,8 +448,11 @@ This will output a Hyperdrive `id` — copy it.
 **2. Install your chosen PostgreSQL driver:**
 
 ```bash
-# Recommended: postgres.js
+# Option A — postgres.js (recommended)
 bun add postgres
+
+# Option B — node-postgres (pg)
+bun add pg && bun add -d @types/pg
 ```
 
 **3. Configure `bunflare.config.ts`:**
@@ -488,7 +465,7 @@ export default {
   sql: {
     type: "hyperdrive",              // Use Hyperdrive backend for Bun.sql
     binding: "HYPERDRIVE",           // Must match the binding name in wrangler.jsonc
-    driver: "postgres",              // Recommended: "postgres"
+    driver: "postgres",              // "postgres" | "pg"
   },
 } satisfies BunflareConfig;
 ```
@@ -522,8 +499,9 @@ Bunflare is **library-agnostic** — you pick the driver, Bunflare adapts. The `
 | `driver` value | Library | Install command | Notes |
 |---|---|---|---|
 | `"postgres"` *(default)* | [postgres.js](https://github.com/porsager/postgres) | `bun add postgres` | Ships a dedicated Cloudflare Workers build (`/cf/`) |
+| `"pg"` | [node-postgres](https://node-postgres.com/) | `bun add pg` | Bunflare translates templates to `$1, $2` syntax internally |
 
-> **💡 Recommendation:** Use `postgres.js`. It has first-class Cloudflare Workers support and is significantly more performant.
+> **💡 Recommendation:** Use `postgres.js`. It has first-class Cloudflare Workers support and is significantly more performant. Use `pg` only if you are migrating an existing codebase that already depends on it.
 
 #### Local Development with Docker
 
@@ -548,13 +526,15 @@ docker-compose up -d
 bun run dev
 ```
 
-> [!TIP]
-> **Host Default:** The dev server now defaults to `localhost`. If you need to use a specific IP, you can configure it in `bunflare.config.ts`.
-
-```jsonc
-// Works reliably in most environments
-"localConnectionString": "postgres://user:password@localhost:5433/mydb"
-```
+> **⚠️ Use `127.0.0.1`, never `localhost`** in your `localConnectionString`. Modern Node.js (used internally by Wrangler/Miniflare) resolves `localhost` to the IPv6 address `::1` first. Docker Desktop, however, maps ports only to IPv4 (`127.0.0.1`). This mismatch causes a silent `connection attempt failed` error even though the container is running. Always be explicit:
+>
+> ```jsonc
+> // ❌ This may silently fail
+> "localConnectionString": "postgres://user:password@localhost:5433/mydb"
+>
+> // ✅ This works reliably
+> "localConnectionString": "postgres://user:password@127.0.0.1:5433/mydb"
+> ```
 
 #### Using a Custom Shim
 
@@ -582,7 +562,7 @@ Your shim file must export a `sql` tagged-template function compatible with the 
 | **Latency** | Ultra-low (edge-native) | Low (pooled + cached by Hyperdrive) |
 | **Best for** | Sessions, flags, small tables | Complex queries, existing Postgres DBs |
 | **wrangler.jsonc key** | `d1_databases` | `hyperdrive` |
-| **Extra dependency** | None | `postgres` |
+| **Extra dependency** | None | `postgres` or `pg` |
 
 ---
 
@@ -591,51 +571,33 @@ Your shim file must export a `sql` tagged-template function compatible with the 
 
 ### 🛠️ Frameworks: Hono 
 
-Bunflare has first-class support for **Hono**. We provide universal middleware that works in both Bun (local dev) and Cloudflare Workers (production) without changing any code.
+Bunflare has first-class support for **Hono**. We provide a universal `serveStatic` adapter that works in both Bun (local dev) and Cloudflare Workers (production) without changing any code.
 
-#### 1. `spa()` Middleware (Recommended)
+#### 1. Setup
 
-The `spa()` middleware is the easiest way to build fullstack applications. It automatically handles:
-- **Static Assets**: Serves files from `dist/public` (JS, CSS, images).
-- **API Protection**: Automatically ignores routes that match your API prefixes.
-- **Smart Fallback**: Serves your `index.html` for any navigation route (essential for client-side routers like TanStack Router or React Router).
+```bash
+bun add hono
+```
+
+#### 2. Entrypoint Pattern
+
+For Hono apps, we recommend a **hybrid export** pattern. This allows Bun's native router to handle the frontend (with automatic transpilation) while Hono handles your API.
 
 ```ts
 // src/index.ts
 import { Hono } from "hono";
-import { spa } from "bunflare/hono";
+import { serveStatic } from "bunflare/hono";
+import indexHtml from "../public/index.html";
 
 const app = new Hono();
 
-// 1. Your API routes
-app.get("/api/hello", (c) => c.json({ message: "Hello!" }));
-
-// 2. SPA Middleware (Static files + Smart Fallback)
-// Put this at the end of your routes
-app.use("*", spa({
-  apiPrefix: ["/api/", "/auth/"] // Optional: prefixes to ignore
-}));
-
-export default app;
-```
-
-#### 2. `serveStatic()` Middleware
-
-If you need more granular control over your static files without the SPA fallback logic, use `serveStatic`.
-
-```ts
-import { serveStatic } from "bunflare/hono";
-
+// Universal static middleware:
 // - Dev: Serves from ./public via hono/bun
 // - Prod: Passes through to Cloudflare ASSETS
-app.use("/assets/*", serveStatic({ root: "./public" }));
-```
+app.use("*", serveStatic({ root: "./public" }));
 
-#### 3. Entrypoint Pattern (Hybrid Export)
+app.get("/api/hello", (c) => c.json({ message: "Hello from Hono!" }));
 
-For the best DX in local development, you can also use a hybrid export pattern:
-
-```ts
 export default {
   fetch: app.fetch,
   routes: {
@@ -646,7 +608,6 @@ export default {
 
 **Why the hybrid export?** 
 In `dev:local`, Hono doesn't know how to transpile `.tsx` files. By putting `indexHtml` in the `routes` property, you hand off the HTML serving to Bun's native router, which handles all the on-the-fly bundling magic for you.
-
 
 ### `import { redis } from "bun"` → Redis-over-KV Bridge ⚡
 
@@ -1076,12 +1037,16 @@ bunflare/
 │       ├── redis/        # import { redis } from "bun" → KV bridge shim
 │       │   ├── index.ts  # Shim generator logic
 │       │   ├── logic.ts  # Redis-over-KV class implementation
-│       ├── sql/          # Bun.sql + bun:sqlite universal shims
-│       │   ├── sql-unified.ts # Tagged template engine (D1 + Hyperdrive)
-│       │   └── sqlite.ts      # Class-based Database/Statement API (D1)
+│       ├── d1/           # bun:sqlite → D1 shim
+│       │   ├── database.ts  # Class-based Database/Statement API
+│       │   ├── logic.ts     # Bun.sql → D1 tagged template engine
+│       │   └── sql.ts       # Shim code generator
+│       ├── hyperdrive/   # Bun.sql → Hyperdrive + PostgreSQL shim
+│       │   ├── logic.ts     # Multi-driver adapter (postgres.js / pg / mysql2)
+│       │   └── sql.ts       # Shim code generator
 │       ├── kv/           # KV + Redis shims
 │       │   ├── index.ts
-│       │   └── logic.ts      # Pure logic — also used in unit tests
+│       │   └── logic.ts     # Pure logic — also used in unit tests
 │       ├── r2.ts         # R2 shim
 │       ├── crypto.ts     # WebCrypto shim
 │       ├── env.ts        # Env shim

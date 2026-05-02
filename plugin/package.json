@@ -1,6 +1,6 @@
 {
   "name": "bunflare",
-  "version": "0.2.22",
+  "version": "0.2.25",
   "description": "Write for Bun. Deploy to Cloudflare. A Bun bundler plugin that automatically replaces Bun-native APIs with Cloudflare Workers equivalents at build time.",
   "author": "fhorray <fhorray@gmail.com>",
   "license": "MIT",
@@ -73,7 +73,8 @@
     "dist/",
     "assets/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "dist"
   ],
   "scripts": {
     "build:lib": "bun build src/index.ts src/hono.ts --outdir ./dist --format esm",

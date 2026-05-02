@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 async function runBuild() {
   // Resolve paths relative to THIS script (scripts/build.ts)
   const scriptDir = import.meta.dir;
-  const packageDir = resolve(scriptDir, "../packages/bunflare");
+  const packageDir = resolve(scriptDir, "../plugin");
   const distDir = join(packageDir, "dist");
   const pkgPath = join(packageDir, "package.json");
 
@@ -25,9 +25,8 @@ async function runBuild() {
 
   const entrypoints = [
     "./src/index.ts",
-    "./src/plugin.ts",
-    "./src/config.ts",
-    "./src/runtime/context.ts",
+    "./src/hono.ts",
+    "./src/drizzle.ts",
     "./src/cli/index.ts",
   ];
 

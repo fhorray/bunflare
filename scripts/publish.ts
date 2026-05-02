@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { transformValue } from "./publish-utils";
 
 /**
  * Robust command runner for the publish workflow.
@@ -79,21 +78,12 @@ async function main() {
   let originalLicenseContent: string | null = null;
 
   /**
-   * Cleanup function to restore the repository to its "Dev Mode" (Source-First) state.
+   * Cleanup function to restore the repository documentation.
    */
   const cleanup = async () => {
-    if (devModePkgJson) {
-      console.log(pc.yellow("\nRestoring package.json to Dev Mode (.ts)..."));
-      await Bun.write(pkgPath, JSON.stringify(devModePkgJson, null, 2) + "\n");
-    } else if (originalPkgJson) {
-      console.log(pc.yellow("\nRolling back package.json change..."));
-      await Bun.write(pkgPath, JSON.stringify(originalPkgJson, null, 2) + "\n");
-    }
-
     if (originalReadmeContent) {
       await Bun.write(readmePath, originalReadmeContent);
     }
-
     if (originalLicenseContent) {
       await Bun.write(licensePath, originalLicenseContent);
     }
@@ -131,46 +121,30 @@ async function main() {
     else if (versionType === "minor") newVersion = `${major}.${minor + 1}.0`;
     else if (versionType === "patch") newVersion = `${major}.${minor}.${patch + 1}`;
 
-    // 3. Create "Dev Mode" Persistence (Base for repo)
-    devModePkgJson = { ...originalPkgJson, version: newVersion };
+    // 3. Update version in package.json (permanent change for the repo)
+    const updatedPkg = { ...originalPkgJson, version: newVersion };
+    await Bun.write(pkgPath, JSON.stringify(updatedPkg, null, 2) + "\n");
 
-    // 4. Create "Publish Mode" (Transformation for NPM)
-    // We deep clone to avoid polluting devModePkgJson
-    const publishPkgJson = JSON.parse(JSON.stringify(devModePkgJson));
-    s.message("Preparing distribution package...");
-    if (publishPkgJson.exports) publishPkgJson.exports = transformValue(publishPkgJson.exports);
-    if (publishPkgJson.bin) publishPkgJson.bin = transformValue(publishPkgJson.bin);
-    if (publishPkgJson.main) publishPkgJson.main = transformValue(publishPkgJson.main, "main");
-    if (publishPkgJson.module) publishPkgJson.module = transformValue(publishPkgJson.module, "module");
-    if (publishPkgJson.types) publishPkgJson.types = transformValue(publishPkgJson.types, "types");
-
-    // Ensure 'dist' is included in files
-    if (publishPkgJson.files && Array.isArray(publishPkgJson.files)) {
-      if (!publishPkgJson.files.includes("dist")) publishPkgJson.files.push("dist");
-    }
-
-    // 5. Write "Publish Mode" to disk TEMPORARILY so build picks it up
-    await Bun.write(pkgPath, JSON.stringify(publishPkgJson, null, 2) + "\n");
-
-    // 6. Execute Build (Ensures fresh dist/ and types with the NEW version)
+    // 4. Execute Build (Ensures fresh dist/ and types with the NEW version)
     s.message(`Building bunflare v${newVersion}...`);
     await runCommand("bun", ["run", "build"], packageDir);
     s.message("Library built successfully!");
 
-    // 7. NPM Publish
+    // 5. NPM Publish
     s.stop(pc.green(`Metadata prepared for v${newVersion}!`));
     p.log.info(`Broadcasting to NPM with tag '${tag}'...`);
     await runCommand("npm", ["publish", "--tag", tag as string, "--access", "public"], packageDir);
 
     p.log.success("Published successfully! 🚀");
-    p.outro(pc.bgGreen(pc.black(" Distribution complete. Local paths restored to .ts ")));
+    p.outro(pc.bgGreen(pc.black(" Distribution complete. ")));
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     s.stop(pc.red(`Publishing aborted: ${message}`));
+    // Rollback version on error
+    if (originalPkgJson) await Bun.write(pkgPath, JSON.stringify(originalPkgJson, null, 2) + "\n");
     process.exit(1);
   } finally {
-    // ALWAYS switch back to Dev Mode (.ts)
     await cleanup();
   }
 }
