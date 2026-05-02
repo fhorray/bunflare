@@ -149,13 +149,37 @@ export async function init() {
       "cf-typegen": "wrangler types --env-interface CloudflareBindings"
     };
     if (template === "hono") {
-      pkg.dependencies = { ...pkg.dependencies, "hono": "latest" };
+      pkg.dependencies = {
+        ...pkg.dependencies,
+        "hono": "latest",
+        "react": "^19",
+        "react-dom": "^19",
+        "bun-plugin-tailwind": "latest"
+      };
+      pkg.devDependencies = {
+        ...pkg.devDependencies,
+        "bunflare": "latest",
+        "@types/react": "^19",
+        "@types/react-dom": "^19"
+      };
     } else if (template === "react") {
       pkg.dependencies = {
         ...pkg.dependencies,
         "react": "^19",
         "react-dom": "^19",
         "bun-plugin-tailwind": "latest"
+      };
+      pkg.devDependencies = {
+        ...pkg.devDependencies,
+        "bunflare": "latest",
+        "@types/react": "^19",
+        "@types/react-dom": "^19"
+      };
+    } else {
+      // Default dev deps for all templates including 'none'
+      pkg.devDependencies = {
+        ...pkg.devDependencies,
+        "bunflare": "latest"
       };
     }
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
@@ -171,12 +195,22 @@ export async function init() {
   // Copy official assets if they exist (searching relative to CLI)
   try {
     const { copyFileSync } = await import("fs");
-    const assetPath = join(import.meta.dir, "../../assets");
+    // In the published package, CLI is at dist/cli/index.js, assets at /assets
+    // We try multiple paths to be safe
+    let assetPath = join(import.meta.dir, "../../assets");
+    if (!existsSync(assetPath)) {
+      assetPath = join(import.meta.dir, "../assets"); // Fallback for different build structures
+    }
+    
     const logoSrc = join(assetPath, "logo.png");
     const faviconSrc = join(assetPath, "favicon.ico");
 
-    if (existsSync(logoSrc)) copyFileSync(logoSrc, join(publicDir, "logo.png"));
-    if (existsSync(faviconSrc)) copyFileSync(faviconSrc, join(publicDir, "favicon.ico"));
+    if (existsSync(logoSrc)) {
+      copyFileSync(logoSrc, join(publicDir, "logo.png"));
+    }
+    if (existsSync(faviconSrc)) {
+      copyFileSync(faviconSrc, join(publicDir, "favicon.ico"));
+    }
   } catch (e) {
     p.log.warn("Could not copy official branding assets. Using defaults.");
   }
@@ -194,9 +228,6 @@ const app = new Hono();
 // - bun dev:local  → serves from ./public via hono/bun
 // - bun dev        → passes through, Cloudflare ASSETS handles static files
 app.use("*", serveStatic({ root: "./public" }));
-
-app.get("/", (c) => c.html(indexHtml));
-
 app.get("/api/status", (c) => {
   return c.json({
     status: "online",
@@ -205,42 +236,75 @@ app.get("/api/status", (c) => {
   });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  routes: {
+    "/": indexHtml
+  }
+};
 `;
+    // Create React entry for Hono
+    const mainTsx = `import React from "react";
+import { createRoot } from "react-dom/client";
+import { App } from "./App";
+
+const root = createRoot(document.getElementById("root")!);
+root.render(<App />);
+`;
+    writeFileSync(join(srcDir, "main.tsx"), mainTsx);
+
+    const appTsx = `import React from "react";
+import logo from "../public/logo.png";
+
+export function App() {
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-[#111827] antialiased">
+      <div className="mb-12 transition-transform hover:scale-105 duration-500">
+        <img src={logo} width="140" height="140" alt="Bunflare Logo" />
+      </div>
+      
+      <h1 className="text-[6rem] font-black tracking-tighter leading-none mb-4">
+        bun<span className="text-[#ff5500]">flare</span>
+      </h1>
+      
+      <p className="text-[#6b7280] text-2xl font-medium mb-12">
+        Start editing <code className="bg-[#f3f4f6] px-3 py-1 rounded-xl border border-[#e5e7eb] text-[#ff5500] font-mono text-xl">src/App.tsx</code>
+      </p>
+      
+      <div className="flex gap-4">
+        <a 
+          href="https://github.com/fhorray/bunflare" 
+          target="_blank" 
+          className="bg-[#111827] text-white font-bold px-10 py-4 rounded-full hover:bg-[#ff5500] hover:-translate-y-1 transition-all duration-300 shadow-xl hover:shadow-[#ff5500]/20"
+        >
+          Documentation
+        </a>
+      </div>
+
+      <footer className="absolute bottom-12 text-[#9ca3af] text-xs tracking-[0.2em] uppercase font-bold">
+        Built with 🧡 by Bunflare
+      </footer>
+    </div>
+  );
+}
+`;
+    writeFileSync(join(srcDir, "App.tsx"), appTsx);
+
     // Create HTML for Hono
     writeFileSync(join(publicDir, "index.html"), `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bunflare</title>
-  <style>
-    :root { --bg: #ffffff; --fg: #111827; --accent: #ff5500; --gray: #6b7280; }
-    body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; antialiased: true; }
-    .container { text-align: center; animation: fadeIn 0.8s ease-out; }
-    .logo { width: 150px; margin-bottom: 2rem; transition: transform 0.4s; }
-    .logo:hover { transform: scale(1.05); }
-    h1 { font-size: 5rem; font-weight: 900; margin: 0; letter-spacing: -0.04em; color: var(--fg); }
-    h1 span { color: var(--accent); }
-    p { font-size: 1.25rem; color: var(--gray); margin-top: 1rem; font-weight: 500; }
-    .code { background: #f3f4f6; padding: 0.4rem 0.8rem; border-radius: 8px; border: 1px solid #e5e7eb; font-family: ui-monospace, monospace; color: var(--accent); font-size: 0.9em; }
-    .btn { display: inline-block; margin-top: 2.5rem; background: var(--fg); color: white; font-weight: 600; padding: 1rem 2.5rem; border-radius: 99px; text-decoration: none; transition: all 0.2s; }
-    .btn:hover { background: var(--accent); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(255, 85, 0, 0.2); }
-    footer { position: absolute; bottom: 3rem; color: #9ca3af; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-  </style>
+  <title>Bunflare + Hono</title>
+  <link rel="icon" type="image/ico" href="./favicon.ico">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
 <body>
-  <div class="container">
-    <img src="./logo.png" class="logo" alt="Bunflare Logo" />
-    <h1>bun<span>flare</span></h1>
-    <p>Start editing <span class="code">src/index.ts</span></p>
-    <a href="https://github.com/fhorray/bunflare" target="_blank" class="btn">Documentation</a>
-  </div>
-  <footer>Built with 🧡 by Bunflare</footer>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>`);
-
   } else if (template === "react") {
     entryContent = `import { serve } from "bun";
 import indexHtml from "../public/index.html";
@@ -335,7 +399,6 @@ export default server;
   const bunfigPath = join(projectDir, "bunfig.toml");
   if (!existsSync(bunfigPath)) {
     writeFileSync(bunfigPath, `[loader]
-".html" = "text"
 ".svg" = "text"
 `);
     p.log.success("Created bunfig.toml");
@@ -362,14 +425,17 @@ export default {
   // global.d.ts
   const globalDtsPath = join(projectDir, "global.d.ts");
   if (!existsSync(globalDtsPath)) {
-    writeFileSync(globalDtsPath, `declare global {
+    writeFileSync(globalDtsPath, `import "bun";
+
+declare global {
   namespace Bun {
     interface Env extends CloudflareBindings { }
   }
 }
-declare module "*.html" { const content: string; export default content; }
+declare module "*.html" { const content: any; export default content; }
 declare module "*.svg" { const content: string; export default content; }
 declare module "*.png" { const content: string; export default content; }
+declare module "*.ico" { const content: string; export default content; }
 `);
     p.log.success("Created global.d.ts");
   }
@@ -410,7 +476,11 @@ declare module "*.png" { const content: string; export default content; }
 
   // 6. Final Steps
   const { spawnSync } = await import("child_process");
-  spawnSync("bun", ["add", "-d", "wrangler", "@types/node"], { stdio: "inherit", cwd: projectDir });
+  const devDeps = ["wrangler", "@types/bun", "bunflare"];
+  if (template === "hono" || template === "react") {
+    devDeps.push("@types/react", "@types/react-dom");
+  }
+  spawnSync("bun", ["add", "-d", ...devDeps], { stdio: "inherit", cwd: projectDir });
   spawnSync("bun", ["install"], { stdio: "inherit", cwd: projectDir });
   spawnSync("bunx", ["wrangler", "types", "--env-interface", "CloudflareBindings"], { stdio: "inherit", cwd: projectDir });
 

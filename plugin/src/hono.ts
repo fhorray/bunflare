@@ -24,8 +24,9 @@ interface ServeStaticOptions {
  */
 export function serveStatic(options: ServeStaticOptions = {}): MiddlewareHandler {
   return async (c, next) => {
-    // Bun runtime is present → local dev mode, serve from filesystem
-    if (typeof globalThis.Bun !== "undefined") {
+    // Real Bun runtime has a 'version' property.
+    // Our shim in Cloudflare Workers does not.
+    if (typeof globalThis.Bun !== "undefined" && "version" in globalThis.Bun) {
       const { serveStatic: bunServeStatic } = await import("hono/bun");
       return bunServeStatic(options)(c, next);
     }

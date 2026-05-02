@@ -112,6 +112,12 @@ async function runBuild(isDev = false, isRebuild = false) {
       target: "browser",
       format: "esm",
       minify: !isDev,
+      loader: {
+        ".html": "text",
+        ".svg": "text",
+        ".png": "file",
+        ...(config.loader || {}),
+      },
       plugins: [bunflare(config), ...(config.plugins || [])],
     });
 
@@ -129,6 +135,7 @@ async function runBuild(isDev = false, isRebuild = false) {
         target: "browser",
         minify: !isDev,
         plugins: config.frontend.plugins || config.plugins || [],
+        loader: config.frontend.loader || {},
       });
 
       if (!frontendResult.success) {

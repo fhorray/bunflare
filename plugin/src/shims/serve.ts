@@ -86,7 +86,11 @@ export function serve(options) {
             } else if (typeof handler === "function") {
               response = await handler(request, server);
             } else {
-              response = handler instanceof Response ? handler.clone() : handler;
+              response = handler instanceof Response 
+                ? handler.clone() 
+                : typeof handler === "string" 
+                  ? new Response(handler, { headers: { "content-type": "text/html;charset=utf-8" } })
+                  : handler;
             }
             
             if (response) break;

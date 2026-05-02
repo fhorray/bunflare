@@ -98,12 +98,18 @@ export interface BunflareOptions {
     outdir: string;
     /** Additional Bun plugins for the frontend build (e.g. Tailwind) */
     plugins?: any[];
+    /** Custom loaders for the frontend build */
+    loader?: Record<string, any>;
   };
 
   /**
    * Additional Bun plugins for the backend build.
    */
   plugins?: any[];
+  /**
+   * Custom loaders for the backend build.
+   */
+  loader?: Record<string, any>;
 }
 
 // ---------------------------------------------------------------------------

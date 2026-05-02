@@ -1,6 +1,6 @@
 {
   "name": "bunflare",
-  "version": "0.2.7",
+  "version": "0.2.19",
   "description": "Write for Bun. Deploy to Cloudflare. A Bun bundler plugin that automatically replaces Bun-native APIs with Cloudflare Workers equivalents at build time.",
   "author": "fhorray <fhorray@gmail.com>",
   "license": "MIT",
@@ -26,21 +26,12 @@
   "bugs": {
     "url": "https://github.com/fhorray/bunflare/issues"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "bunflare": "./dist/cli/index.js"
-  },
-  "files": [
-    "dist/",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build:lib": "bun build src/index.ts src/hono.ts --outdir ./dist --format esm",
-    "build:cli": "bun build src/cli/index.ts --outfile ./dist/cli/index.js --target bun",
-    "build:types": "tsc -p tsconfig.build.json",
-    "build": "bun run build:lib && bun run build:cli && bun run build:types"
+    "bunflare": "dist/cli/index.js"
   },
   "exports": {
     ".": {
@@ -52,15 +43,17 @@
       "import": "./dist/hono.js"
     }
   },
-  "typesVersions": {
-    "*": {
-      "hono": [
-        "./dist/hono.d.ts"
-      ],
-      "*": [
-        "./dist/*.d.ts"
-      ]
-    }
+  "files": [
+    "dist/",
+    "assets/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build:lib": "bun build src/index.ts src/hono.ts --outdir ./dist --format esm",
+    "build:cli": "bun build src/cli/index.ts --outfile ./dist/cli/index.js --target bun",
+    "build:types": "tsc -p tsconfig.build.json",
+    "build": "bun run build:lib && bun run build:cli && bun run build:types"
   },
   "peerDependencies": {
     "hono": ">=4.0.0"
