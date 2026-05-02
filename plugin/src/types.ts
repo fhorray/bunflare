@@ -165,8 +165,8 @@ export interface BunflareConfig extends BunflareOptions {
   port?: number;
 
   /**
-   * Development server IP/Host.
-   * @default "127.0.0.1"
+   * The IP address the dev server should bind to.
+   * @default "localhost"
    */
   ip?: string;
 }

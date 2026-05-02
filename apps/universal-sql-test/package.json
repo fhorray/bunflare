@@ -1,0 +1,20 @@
+{
+  "name": "universal-sql-test",
+  "version": "1.0.0",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "bunflare dev",
+    "build": "bunflare build",
+    "deploy": "bunflare deploy"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.0.0",
+    "postgresjs": "^1.1.2"
+  },
+  "devDependencies": {
+    "bunflare": "workspace:*",
+    "@cloudflare/workers-types": "^4.20240222.0"
+  }
+}

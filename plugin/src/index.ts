@@ -1,18 +1,17 @@
 import type { BunPlugin } from "bun";
-import { getD1DatabaseShim } from "./shims/d1/database.ts";
-import { getSqlTagShim } from "./shims/d1/sql.ts";
-import { getRedisShim } from "./shims/redis/index.ts";
-import { getCryptoShim } from "./shims/crypto.ts";
-import { getEnvShim } from "./shims/env.ts";
-import { getServeShim } from "./shims/serve.ts";
-import { getR2Shim } from "./shims/r2.ts";
-import { getHyperdriveSqlShim } from "./shims/hyperdrive/sql.ts";
+import { getD1DatabaseShim } from "./shims/sqlite";
+import { getRedisShim } from "./shims/redis/index";
+import { getCryptoShim } from "./shims/crypto";
+import { getEnvShim } from "./shims/env";
+import { getServeShim } from "./shims/serve";
+import { getR2Shim } from "./shims/r2";
+import { getUnifiedSqlShim } from "./shims/sql-unified";
 import pc from "picocolors";
-import type { BunflareConfig, BunflareOptions } from "./types.ts";
+import type { BunflareConfig, BunflareOptions } from "./types";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-export * from "./types.ts";
+export * from "./types";
 
 interface ShimModule {
   path: string;
@@ -74,9 +73,7 @@ function initializeRegistry(registry: ShimRegistry, options: BunflareOptions, is
 
     registry.modules.push({
       path: "sql",
-      contents: isHyperdrive
-        ? getHyperdriveSqlShim(sqlBinding, driver)
-        : getSqlTagShim(sqlBinding),
+      contents: getUnifiedSqlShim(sqlBinding, driver),
     });
   }
 
@@ -263,7 +260,7 @@ export function bunflare(options: BunflareConfig = {}, isSilent = false): BunPlu
         // For 'bun' entrypoint, we use the special 'bun' shim
         const moduleName = args.path === "bun" ? "bun" : args.path.replace(/^(bun|bunflare):/, "");
         const shim = registry.modules.find((m) => m.path === moduleName);
-        
+
         if (shim) {
           return { contents: shim.contents, loader: "ts" };
         }

@@ -2,7 +2,7 @@ import { expect, test, describe, spyOn } from "bun:test";
 import { getRedisShim } from "../plugin/src/shims/redis/index.ts";
 import { getR2Shim } from "../plugin/src/shims/r2.ts";
 import { getCryptoShim } from "../plugin/src/shims/crypto.ts";
-import { getD1DatabaseShim } from "../plugin/src/shims/d1/database.ts";
+import { getD1DatabaseShim } from "../plugin/src/shims/sqlite.ts";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
@@ -10,7 +10,10 @@ function evalShim(shimCode: string, globalMock: any) {
   // Strip imports and types
   let code = shimCode.replace(/import .* from .*;/g, "");
   
-  const transpiled = transpiler.transformSync(code).replace(/export /g, "");
+  const transpiled = transpiler.transformSync(code)
+    .replace(/export default \{/g, "const defaultExport = {")
+    .replace(/export default/g, "const defaultExport =")
+    .replace(/export /g, "");
   
   return new Function("globalThis", `
     const exports = {};
@@ -48,10 +51,7 @@ describe("Shim Logic Tests", () => {
       const db = new D1Module.Database();
 
       const results = await db.query("SELECT * FROM tests").all();
-      expect(results).toEqual({
-        results: [{ id: 1, val: "test" }],
-        success: true
-      });
+      expect(results).toEqual([{ id: 1, val: "test" }]);
 
       await db.run("INSERT INTO tests (val) VALUES (?)", "hello");
     });

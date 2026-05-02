@@ -40,6 +40,10 @@ describe("Bunflare CLI", () => {
     });
 
     console.log("Build exit code:", result.exitCode);
+    if (!result.success) {
+      console.error("BUILD STDOUT:", result.stdout.toString());
+      console.error("BUILD STDERR:", result.stderr.toString());
+    }
     expect(result.success).toBe(true);
     expect(existsSync(join(TEST_DIR, "dist/index.js"))).toBe(true);
   }, 20000);

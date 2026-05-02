@@ -1,13 +1,11 @@
-import { expect, test, describe } from "bun:test";
-import { getSqlTagShim } from "../plugin/src/shims/d1/sql.ts";
+import { getUnifiedSqlShim } from "../plugin/src/shims/sql-unified.ts";
 
 describe("Shim Generation", () => {
-  test("getSqlTagShim generates valid D1 SQL shim", () => {
-    const shim = getSqlTagShim("MY_DB");
+  test("getUnifiedSqlShim generates valid SQL shim", () => {
+    const shim = getUnifiedSqlShim("MY_DB");
 
-    expect(shim).toContain('export const sql = createSQL("MY_DB");');
+    expect(shim).toContain('export const sql = createSQL("MY_DB"');
     expect(shim).toContain('export const SQL = class');
     expect(shim).toContain('class SQLQuery');
-    expect(shim).toContain('class SQLFragment');
   });
 });

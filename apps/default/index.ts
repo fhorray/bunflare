@@ -10,6 +10,7 @@ import homepage from "./public/index.html";
  * if the binding is present.
  */
 const server = Bun.serve({
+  port: process.env.PORT || 3000,
   routes: {
     // Root landing page (Fullstack mode)
     "/": homepage,

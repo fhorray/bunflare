@@ -33,17 +33,21 @@ export async function init(isQuiet = false) {
       "Bunflare Migration"
     );
 
-    const shouldMigrate = await p.confirm({
-      message: "Would you like to add Bunflare to this project?",
-      initialValue: true,
-    });
+    if (!skipPrompts) {
+      const shouldMigrate = await p.confirm({
+        message: "Would you like to add Bunflare to this project?",
+        initialValue: true,
+      });
 
-    if (p.isCancel(shouldMigrate)) {
-      p.cancel("Operation cancelled.");
-      process.exit(0);
-    }
+      if (p.isCancel(shouldMigrate)) {
+        p.cancel("Operation cancelled.");
+        process.exit(0);
+      }
 
-    if (shouldMigrate) {
+      if (shouldMigrate) {
+        skipPrompts = true;
+      }
+    } else {
       skipPrompts = true;
     }
   }
@@ -412,14 +416,15 @@ export default server;
 
   const configPath = join(projectDir, "bunflare.config.ts");
   if (!existsSync(configPath)) {
-    const configContent = `import { bunflare, type BunflareConfig } from "bunflare";
+    const hasFrontend = template === "hono" || template === "react" || existsSync(join(publicDir, "index.html"));
+    const configContent = `import type { BunflareConfig } from "bunflare";
 
 export default {
-  entrypoint: "${entrypoint}",
+  entrypoint: "${entrypoint}",${hasFrontend ? `
   frontend: {
     entrypoint: "./public/index.html",
     outdir: "./dist/public",
-  },
+  },` : ""}
 } satisfies BunflareConfig;
 `;
     writeFileSync(configPath, configContent);

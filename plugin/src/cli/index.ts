@@ -243,7 +243,7 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 if (command === "init") {
-  const isQuiet = args.includes("-y") || args.includes("--yes");
+  const isQuiet = args.includes("-y") || args.includes("--yes") || args.includes("--quiet");
   await init(isQuiet);
 } else if (args.includes("dev")) {
   const isLocal = args.includes("--local");
@@ -256,7 +256,7 @@ if (command === "init") {
       const config = await loadConfig();
       const entrypoint = config?.entrypoint || "./index.ts";
       const port = config?.port || 8787;
-      const ip = config?.ip || "127.0.0.1";
+      const ip = config?.ip || "localhost";
       const reloadPort = port + 1001;
 
       startReloadServer(reloadPort);
@@ -328,7 +328,7 @@ if (command === "init") {
         if (!filename) return;
         const fullPath = join(process.cwd(), filename);
         const normalized = filename.replace(/\\/g, "/");
-        
+
         if (
           normalized.startsWith("dist") ||
           normalized.startsWith(".wrangler") ||
@@ -352,7 +352,7 @@ if (command === "init") {
         debounceTimer = setTimeout(async () => {
           if (isBuilding) return;
           isBuilding = true;
-          
+
           try {
             process.stdout.write(`\n${pc.yellow("↻")} ${pc.gray(`change in ${normalized}, rebuilding... `)}`);
 

@@ -1,13 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { createSQL, SQLFragment } from "../plugin/src/shims/d1/logic.ts";
-
-describe("SQLFragment", () => {
-  test("should hold text and params", () => {
-    const fragment = new SQLFragment("id, name", [1, 2]);
-    expect(fragment.text).toBe("id, name");
-    expect(fragment.params).toEqual([1, 2]);
-  });
-});
+import { createSQL } from "../plugin/src/shims/sql-unified.ts";
 
 // Mock implementation for the test environment
 const createMockDB = () => ({
@@ -88,7 +80,7 @@ describe("Bun.sql Logic (Direct Test)", () => {
       await query;
       expect().fail("Should have thrown");
     } catch (e: any) {
-      expect(e.message).toContain("not found in Bun.env");
+      expect(e.message).toContain('Binding "DB" not found');
     }
   });
 

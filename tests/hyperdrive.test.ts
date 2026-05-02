@@ -1,5 +1,5 @@
 import { describe, expect, test, mock } from "bun:test";
-import { createSQL } from "../plugin/src/shims/hyperdrive/logic.ts";
+import { createSQL } from "../plugin/src/shims/sql-unified.ts";
 
 // Mock the postgres driver
 mock.module("postgres", () => {
@@ -57,7 +57,7 @@ describe("Hyperdrive SQL Shim Logic", () => {
 
     await expect(async () => {
       await sql`SELECT 1`;
-    }).toThrow('[bunflare] Hyperdrive binding "MISSING_DB" not found in Bun.env');
+    }).toThrow('Binding "MISSING_DB" not found');
   });
 
   test("should handle unsafe queries", async () => {

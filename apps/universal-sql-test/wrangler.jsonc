@@ -1,0 +1,12 @@
+{
+  "name": "universal-sql-test",
+  "main": "dist/index.js",
+  "compatibility_date": "2025-02-24",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "universal-test-db",
+      "database_id": "848b6c42-2b6d-495c-9c32-8488e9989a44"
+    }
+  ]
+}

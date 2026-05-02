@@ -41,13 +41,14 @@ No runtime overhead. No vendor lock-in. Just write Bun, deploy Cloudflare.
 | Bun API | Cloudflare Equivalent | Status |
 |---|---|---|
 | `Bun.env` | Worker `env` bindings | ✅ Done |
-| `bun:sqlite` / `new Database()` | Cloudflare **D1** | ✅ Done |
-| `Bun.sql` (tagged template) | Cloudflare **Hyperdrive** + any Postgres driver | ✅ Done |
+| `Bun.sql` (tagged template) | Cloudflare **D1** or **Hyperdrive** | ✅ Done |
+| `bun:sqlite` / `new Database()` | Cloudflare **D1** (Legacy API) | ✅ Done |
 | `import { redis } from "bun"` | Cloudflare **KV** (Redis-over-KV bridge) | ✅ Done |
 | `Bun.password.hash/verify` | **WebCrypto** (PBKDF2) | ✅ Done |
 | `Bun.hash()` | **WebCrypto** (SHA-256) | ✅ Done |
 | `Bun.file()` / `Bun.write()` | Cloudflare **R2** | ✅ Done |
 | `Bun.serve()` + `routes` | Cloudflare **Worker fetch handler** | ✅ Done |
+| `bunflare/drizzle` | **Drizzle ORM** (Universal Adapter) | ✅ Done |
 | Fullstack HTML/SPA Build | Cloudflare **Workers Assets** | ✅ Done |
 
 ---
@@ -179,27 +180,52 @@ bun run cf-typegen  # bunx wrangler types --env-interface CloudflareBindings
 ### 6. Write your Worker like you're writing Bun
 
 > [!IMPORTANT]
-> **Export Default Requirement:** Cloudflare Workers require your application to be exported as an ES module default export. Whether you use `export default Bun.serve(...)` directly or assign it to a variable (`const server = ...; export default server;`), this export is strictly required.
+> **Universal SQL Pattern:** We recommend using `Bun.sql` instead of `bun:sqlite` whenever possible. It works identically on local Bun (SQLite) and production Cloudflare (D1 or Hyperdrive), ensuring your code is truly universal.
 
 ```ts
 // src/index.ts
-import { Database } from "bun:sqlite";
 import { redis } from "bun";
 
 export default Bun.serve({
   routes: {
     "/api/hello": async (req) => {
-      // bun:sqlite → D1 at deploy time
-      const db = new Database("DB");
+      // Bun.sql → D1 (or Hyperdrive) at deploy time
+      const users = await Bun.sql`SELECT * FROM users LIMIT 10`;
 
       // import { redis } from "bun" → Cloudflare KV at deploy time
-      await redis.set("greeting", "Hello from Cloudflare!");
-      const greeting = await redis.get("greeting");
+      await redis.set("last_query", new Date().toISOString());
 
-      return Response.json({ greeting });
+      return Response.json({ users, status: "success" });
     }
-  },
-  development: true // enables live-reload in dev mode
+  }
+});
+```
+
+---
+
+## 🌩️ Drizzle ORM (Universal)
+
+Bunflare provides a first-class, zero-boilerplate adapter for **Drizzle ORM**. It handles all the underlying complexity of D1/Hyperdrive proxying, batching, and type serialization automatically.
+
+```ts
+import { drizzle } from "bunflare/drizzle";
+import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
+
+// 1. Define your schema using sqlite-core (works for D1 too!)
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey(),
+  name: text("name").notNull(),
+});
+
+// 2. Initialize the universal database
+export const db = drizzle({ schema: { users } });
+
+// 3. Use it anywhere (Local Bun or Cloudflare Workers)
+export default Bun.serve({
+  async fetch(req) {
+    const allUsers = await db.select().from(users);
+    return Response.json(allUsers);
+  }
 });
 ```
 
@@ -522,15 +548,13 @@ docker-compose up -d
 bun run dev
 ```
 
-> **⚠️ Use `127.0.0.1`, never `localhost`** in your `localConnectionString`. Modern Node.js (used internally by Wrangler/Miniflare) resolves `localhost` to the IPv6 address `::1` first. Docker Desktop, however, maps ports only to IPv4 (`127.0.0.1`). This mismatch causes a silent `connection attempt failed` error even though the container is running. Always be explicit:
->
-> ```jsonc
-> // ❌ This may silently fail
-> "localConnectionString": "postgres://user:password@localhost:5433/mydb"
->
-> // ✅ This works reliably
-> "localConnectionString": "postgres://user:password@127.0.0.1:5433/mydb"
-> ```
+> [!TIP]
+> **Host Default:** The dev server now defaults to `localhost`. If you need to use a specific IP, you can configure it in `bunflare.config.ts`.
+
+```jsonc
+// Works reliably in most environments
+"localConnectionString": "postgres://user:password@localhost:5433/mydb"
+```
 
 #### Using a Custom Shim
 
@@ -1052,16 +1076,12 @@ bunflare/
 │       ├── redis/        # import { redis } from "bun" → KV bridge shim
 │       │   ├── index.ts  # Shim generator logic
 │       │   ├── logic.ts  # Redis-over-KV class implementation
-│       ├── d1/           # bun:sqlite → D1 shim
-│       │   ├── database.ts  # Class-based Database/Statement API
-│       │   ├── logic.ts     # Bun.sql → D1 tagged template engine
-│       │   └── sql.ts       # Shim code generator
-│       ├── hyperdrive/   # Bun.sql → Hyperdrive + PostgreSQL shim
-│       │   ├── logic.ts     # Multi-driver adapter (postgres.js / pg / mysql2)
-│       │   └── sql.ts       # Shim code generator
+│       ├── sql/          # Bun.sql + bun:sqlite universal shims
+│       │   ├── sql-unified.ts # Tagged template engine (D1 + Hyperdrive)
+│       │   └── sqlite.ts      # Class-based Database/Statement API (D1)
 │       ├── kv/           # KV + Redis shims
 │       │   ├── index.ts
-│       │   └── logic.ts     # Pure logic — also used in unit tests
+│       │   └── logic.ts      # Pure logic — also used in unit tests
 │       ├── r2.ts         # R2 shim
 │       ├── crypto.ts     # WebCrypto shim
 │       ├── env.ts        # Env shim

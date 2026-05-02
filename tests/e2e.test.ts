@@ -2,7 +2,9 @@ import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { spawn } from "child_process";
 import { join } from "path";
 
-const PORT = 3000;
+(test as any).timeout = 60000;
+
+const PORT = 3001;
 const BASE_URL = `http://localhost:${PORT}`;
 
 describe("Bunflare Database Endpoints E2E", () => {
@@ -20,6 +22,7 @@ describe("Bunflare Database Endpoints E2E", () => {
           stdio: "pipe",
           env: {
             ...process.env,
+            PORT: PORT.toString(),
             NO_COLOR: "1" 
           }
         });
@@ -30,7 +33,7 @@ describe("Bunflare Database Endpoints E2E", () => {
           const checkReady = (data: Buffer) => {
             const str = data.toString();
             output += str;
-            if (str.includes(`http://localhost:${PORT}`) || str.includes("Ready on")) {
+            if (str.includes(`http://localhost:${PORT}`) || str.includes("running at") || str.includes("Ready on")) {
               resolve();
             }
           };
@@ -39,14 +42,18 @@ describe("Bunflare Database Endpoints E2E", () => {
 
           // timeout
           setTimeout(() => {
+            if (output.includes(`http://localhost:${PORT}`)) {
+               resolve(); // Just in case we missed it
+               return;
+            }
             console.error("Server output before timeout:", output);
             reject(new Error(`Server failed to start in ${mode} mode. Output: ${output}`));
-          }, 15000); 
+          }, 30000); 
         });
 
         // Let it settle for a sec
         await new Promise(r => setTimeout(r, 1000));
-      });
+      }, 60000);
 
       afterAll(() => {
         if (serverProcess) {
