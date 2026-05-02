@@ -229,6 +229,92 @@ Bun.serve({ routes })   →   fetch handler   →  export default { fetch }
 
 ---
 
+## ⚙️ Configuration (`bunflare.config.ts`)
+
+Bunflare is designed to be **Zero Config** by automatically discovering your Cloudflare bindings from `wrangler.jsonc`. However, for fullstack apps or complex builds, you can use `bunflare.config.ts` to fine-tune the behavior.
+
+```ts
+import type { BunflareConfig } from "bunflare";
+import tailwind from "bun-plugin-tailwind";
+
+export default {
+  // The entry point of your Worker (Default: ./src/index.ts or ./index.ts)
+  entrypoint: "./src/index.ts",
+
+  // Backend-specific configuration
+  sqlite: { binding: "DB" },
+  redis:  { binding: "CACHE" },
+  
+  // Custom Bun plugins for the backend build
+  plugins: [tailwind],
+
+  // 📦 Loaders: How Bun treats different file types
+  loader: {
+    ".txt": "text",
+    ".data": "binary"
+  },
+
+  // 🌐 Frontend-specific configuration (Fullstack mode)
+  frontend: {
+    entrypoint: "./public/index.html",
+    outdir: "./dist/public",
+    plugins: [tailwind],
+    // Loaders specific to the frontend build
+    loader: {
+      ".wasm": "file"
+    }
+  }
+} satisfies BunflareConfig;
+```
+
+### 🧠 Deep Dive: Loaders
+
+Loaders are one of the most important concepts in the Bun/Bunflare build process. They define **how Bun should interpret a file** when you import it in your code.
+
+| Loader | Effect | Use Case |
+|---|---|---|
+| `text` | Imports the file content as a plain string. | HTML templates, CSS (as string), Shader code. |
+| `file` | Returns the URL/Path to the file and copies it to `outdir`. | Images, Fonts, WASM files. |
+| `binary` | Imports the file content as a `Uint8Array`. | Binary data files, certificates. |
+| `json` | Parses the file as JSON. | Config files, local data. |
+
+**Why do we use them in Bunflare?**
+1. **HTML as Text**: By default, Bunflare treats `.html` files as `text` during the production build. This allows us to inject the final bundled JS paths into the HTML and then return it as a string from your Worker.
+2. **Assets as Files**: If you have a `.png` or `.woff2` file, using the `file` loader ensures that Bun copies the file to your `dist/public` folder so Cloudflare ASSETS can serve it.
+3. **Custom Extensions**: If you use a special format (like `.glsl` or `.yaml`), you must tell Bunflare how to load it, or the build will fail.
+
+---
+
+## 🛠️ CLI Reference
+
+The `bunflare` CLI automates the entire build and deploy pipeline.
+
+### `bunflare init [directory]`
+Scaffolds a new project from a template.
+
+*   **Templates**: 
+    *   `react`: (Default) Modern React 19 + Tailwind + Bun.serve.
+    *   `hono`: Hono Framework + React 19 + Fullstack routing.
+    *   `none`: Minimal "Hello World" Worker.
+*   **Example**: `bunx bunflare init my-app --template hono`
+
+### `bunflare dev [options]`
+Starts a development server with live-reloading.
+
+*   **--local, -l**: (Recommended for DX) Runs in **Local-Only Mode**. This uses Bun's native runtime directly instead of Wrangler/Miniflare. It's much faster and provides a "Pure Bun" experience while still simulating Cloudflare bindings.
+*   **Default**: Runs `wrangler dev` with the Bunflare plugin. Use this to test exact Cloudflare behavior (like R2/D1 limits).
+
+### `bunflare build`
+Compiles your application for production.
+
+1.  **Backend**: Bundles your code into a single `dist/index.js` and applies all Cloudflare shims.
+2.  **Frontend**: If `frontend` is configured, it crawls your HTML, bundles all referenced scripts/styles, and outputs them to `dist/public`.
+
+### `bunflare deploy`
+The "All-in-One" command. It runs `bunflare build` and then immediately calls `wrangler deploy` to push your app to the Cloudflare global network.
+
+---
+
 ## ⚡ Smart Auto-Discovery
 
 Bunflare is designed to be **Zero Config**. When you run `dev`, `build`, or `deploy`, it automatically parses your `wrangler.jsonc` to find your bindings.
@@ -623,78 +709,6 @@ const isDev  = Bun.env.NODE_ENV === "development";
 
 ---
 
-## 🛠️ CLI Reference
-
-The `bunflare` CLI is the heart of your development workflow.
-
-### `bunflare init`
-
-Scaffolds a new Bunflare project. Supports multiple templates:
-- `react` (Default): Fullstack React 19 + Bun.serve
-- `hono`: Fullstack Hono + React 19
-- `none`: Minimal Worker setup
-
-```bash
-bunx bunflare init my-app --template hono
-```
-
-### `bunflare dev`
-
-Starts the development server with live-reload.
-
-```bash
-bun run dev   # → bunflare dev
-```
-
-Under the hood, this starts `wrangler dev --live-reload`. The live-reload script is automatically injected into your HTML responses when `development: true` is set in `Bun.serve()`.
-
-> **💡 For the best DX**, add a `build` section to your `wrangler.jsonc` to let Wrangler manage automatic rebuilds on file save:
->
-> ```jsonc
-> {
->   "build": {
->     "command": "bunflare build",
->     "watch_dir": "./src"
->   }
-> }
-> ```
->
-> This way, every time you save a file, `bunflare build` runs automatically and Wrangler detects the new `dist/index.js` to hot-reload.
-
-### `bunflare build`
-
-Runs a full production build: Worker bundle + Frontend assets.
-
-```bash
-bun run build   # → bunflare build
-```
-
-Output:
-```
-🚀 building fullstack app...
-  ↳ sqlite shim enabled -> D1: DB
-  ↳ redis  shim enabled -> binding: MY_CACHE
-  ↳ r2     shim enabled -> binding: MY_BUCKET
-  ↳ assets configured -> ./public/index.html
-✓ build successful at 4:20:00 PM
-```
-
-### `bunflare deploy`
-
-Builds for production and deploys to Cloudflare in one shot.
-
-```bash
-bun run deploy   # → bunflare deploy
-```
-
-Output:
-```
-🚀 preparing production build...
-✓ build successful at 4:25:00 PM
-📦 build ready for cloudflare
-  [wrangler output here...]
-```
-
 ---
 
 ## 🏗️ Fullstack Architecture
@@ -717,26 +731,6 @@ my-app/
 └── package.json
 ```
 
-**`bunflare.config.ts`** — the control center:
-```ts
-import type { BunflareConfig } from "bunflare";
-
-export default {
-  entrypoint: "./index.ts",
-  sqlite: { binding: "DB" },             // bun:sqlite → D1
-  sql: {
-    type: "hyperdrive",                  // Bun.sql → Hyperdrive + Postgres
-    binding: "HYPERDRIVE",
-    driver: "postgres",                  // "postgres" | "pg"
-  },
-  redis:  { binding: "CACHE" },
-  r2:     { binding: "STORAGE" },
-  frontend: {
-    entrypoint: "./public/index.html",
-    outdir:     "./dist/public",
-  }
-} satisfies BunflareConfig;
-```
 
 **`wrangler.jsonc`** — the Cloudflare config:
 ```jsonc
