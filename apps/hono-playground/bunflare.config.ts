@@ -3,7 +3,7 @@ import tailwind from "bun-plugin-tailwind";
 
 export default {
   entrypoint: "./src/index.ts",
-  port: 3000,
+  port: 3006,
   ip: "127.0.0.1",
   frontend: {
     entrypoint: "./public/index.html",

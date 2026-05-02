@@ -7,6 +7,22 @@ import { bunflare } from "../index.ts";
 import type { BunflareConfig, BunflareOptions } from "../types.ts";
 import pc from "picocolors";
 import type { BuildOutput } from "bun";
+import { createServer } from "net";
+
+/**
+ * Checks if a port is available on localhost.
+ */
+function isPortAvailable(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port, host);
+  });
+}
 
 /**
  * Loads the bunflare.config.ts file from the current directory.
@@ -191,9 +207,10 @@ async function runBuild(isDev = false, isRebuild = false, only?: "frontend" | "b
  * Executes a wrangler command safely without a shell.
  */
 function runWrangler(wranglerArgs: string[]) {
-  const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
+  const cmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  const args = ["wrangler", ...wranglerArgs];
 
-  const child = spawn(command, wranglerArgs, {
+  const child = spawn(cmd, args, {
     stdio: "inherit",
   });
 
@@ -259,6 +276,17 @@ if (command === "init") {
       const ip = config?.ip || "localhost";
       const reloadPort = port + 1001;
 
+      // Port Check: Fail early with a beautiful message
+      const available = await isPortAvailable(port, ip);
+      if (!available) {
+        console.error(`\n${pc.red("✖ Fatal Error:")} Port ${pc.bold(port)} is already in use on ${pc.bold(ip)}.`);
+        console.error(`${pc.gray("  Another process is already listening on this port.")}`);
+        console.error(`${pc.gray("  Suggestions:")}`);
+        console.error(`  - Change the ${pc.cyan("port")} in your ${pc.bold("bunflare.config.ts")}`);
+        console.error(`  - Kill the process using this port: ${pc.yellow(`fuser -k ${port}/tcp`)} (Linux/Mac) or use Task Manager (Windows)\n`);
+        process.exit(1);
+      }
+
       startReloadServer(reloadPort);
 
       // 1. Start Watcher for Local Mode
@@ -319,6 +347,17 @@ if (command === "init") {
       const port = config?.port || 8787;
       const ip = config?.ip || "127.0.0.1";
 
+      // 1.5 Port Check: Fail early with a beautiful message
+      const available = await isPortAvailable(port, ip);
+      if (!available) {
+        console.error(`\n${pc.red("✖ Fatal Error:")} Port ${pc.bold(port)} is already in use on ${pc.bold(ip)}.`);
+        console.error(`${pc.gray("  Another process is already listening on this port.")}`);
+        console.error(`${pc.gray("  Suggestions:")}`);
+        console.error(`  - Change the ${pc.cyan("port")} in your ${pc.bold("bunflare.config.ts")}`);
+        console.error(`  - Kill the process using this port: ${pc.yellow(`fuser -k ${port}/tcp`)} (Linux/Mac) or use Task Manager (Windows)\n`);
+        process.exit(1);
+      }
+
       // 2. Start Watcher
       let debounceTimer: NodeJS.Timeout;
       let isBuilding = false;
@@ -376,9 +415,9 @@ if (command === "init") {
 
       // 3. Start Wrangler
       const filteredArgs = args.filter(a => a !== "dev" && a !== "--local");
-      const wranglerArgs = ["dev", "--live-reload", "--port", port.toString(), "--ip", ip, ...filteredArgs];
-      const command = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
-      const child = spawn(command, wranglerArgs, {
+      const wranglerArgs = ["wrangler", "dev", "--live-reload", "--port", port.toString(), "--ip", ip, ...filteredArgs];
+      const cmd = process.platform === "win32" ? "npx.cmd" : "npx";
+      const child = spawn(cmd, wranglerArgs, {
         stdio: "inherit",
       });
 
@@ -390,9 +429,18 @@ if (command === "init") {
 
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
-
+ 
       child.on("exit", (code) => {
         watcher.close();
+        if (code !== 0 && code !== null) {
+          process.stderr.write(`\n${pc.red("✖ Wrangler crashed")} (exit code ${code})\n`);
+          if (process.platform === "win32") {
+            process.stderr.write(`${pc.yellow("  Windows Tip:")} This often happens due to port conflicts or IPv6 issues.\n`);
+            process.stderr.write(`  - Ensure you are using ${pc.bold("127.0.0.1")} instead of ${pc.bold("localhost")} in your config.\n`);
+            process.stderr.write(`  - Check if any other process is using the ${pc.bold("Hyperdrive")} or ${pc.bold("SQL")} proxy ports.\n`);
+            process.stderr.write(`  - Try running ${pc.cyan("bunflare dev --local")} to isolate the issue.\n\n`);
+          }
+        }
         process.exit(code ?? 0);
       });
     });

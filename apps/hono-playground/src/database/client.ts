@@ -1,14 +1,9 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle } from "bunflare/drizzle";
 import * as schema from "./schema";
 
-// Use HYPERDRIVE binding if available (Cloudflare/Bunflare), otherwise fallback to DATABASE_URL (.env/Local)
-const connectionString = process.env.HYPERDRIVE || process.env.DATABASE_URL!;
-
-// For Workers/Hyperdrive, we use a single connection or a small pool
-const client = postgres(connectionString, { 
-  max: 1,
-  onnotice: () => {} 
+// Universal Bunflare Drizzle Adapter
+// - Local: Uses Bun.sql (native SQLite)
+// - Production: Uses Bun.sql (mapped to Hyperdrive/D1 binding)
+export const db = drizzle({ 
+  schema 
 });
-
-export const db = drizzle(client, { schema });
