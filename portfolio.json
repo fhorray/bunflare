@@ -9,5 +9,6 @@
   "en": {
     "title": "Bunflare",
     "description": "Create with Bun, deploy to Cloudflare Workers with ease."
-  }
+  },
+  "cover": "https://raw.githubusercontent.com/fhorray/bunflare/refs/heads/main/assets/cover.png",
 }
