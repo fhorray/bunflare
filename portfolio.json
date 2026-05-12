@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "priority": 2,
+  "tags": ["bun", "cloudflare", "typescript"],
+  "pt": {
+    "title": "Bunflare",
+    "description": "Crie aplicações com Bun e faça deploy no Cloudflare Workers com facilidade."
+  },
+  "en": {
+    "title": "Bunflare",
+    "description": "Create with Bun, deploy to Cloudflare Workers with ease."
+  }
+}
